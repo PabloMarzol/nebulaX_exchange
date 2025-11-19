@@ -151,15 +151,18 @@ describe('RateLimiter', () => {
         // Consume all tokens
         await limiter.acquire(1);
 
-        // Queue 2 requests (max queue size)
-        limiter.acquire(1);
-        limiter.acquire(1);
+        // Queue 2 requests (max queue size) - catch rejections to avoid unhandled errors
+        const promise1 = limiter.acquire(1).catch(() => {});
+        const promise2 = limiter.acquire(1).catch(() => {});
 
         // This should be rejected
         await expect(limiter.acquire(1)).rejects.toThrow('Queue full');
 
         const stats = limiter.getStats();
         expect(stats.totalRejected).toBe(1);
+
+        // Clean up queued promises
+        await Promise.allSettled([promise1, promise2]);
       } finally {
         limiter.shutdown();
       }
@@ -174,7 +177,7 @@ describe('RateLimiter', () => {
 
       try {
         await limiter.acquire(1);
-        limiter.acquire(1); // queued
+        const queuedPromise = limiter.acquire(1).catch(() => {}); // queued - catch rejection
 
         // These should be rejected
         try {
@@ -186,6 +189,9 @@ describe('RateLimiter', () => {
 
         const stats = limiter.getStats();
         expect(stats.totalRejected).toBe(2);
+
+        // Clean up queued promise
+        await queuedPromise;
       } finally {
         limiter.shutdown();
       }

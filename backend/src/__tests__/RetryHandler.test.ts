@@ -253,12 +253,10 @@ describe('RetryHandler', () => {
       let attempts = 0;
       const mockFn = vi.fn().mockImplementation(async () => {
         attempts++;
-        if (attempts <= 10) {
-          const error: any = new Error('Fail');
-          error.statusCode = 503;
-          throw error;
-        }
-        return 'success';
+        // Always fail to test maxDelay behavior
+        const error: any = new Error('Fail');
+        error.statusCode = 503;
+        throw error;
       });
 
       await expect(handler.execute(mockFn)).rejects.toThrow();
