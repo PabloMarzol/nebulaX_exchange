@@ -2,7 +2,7 @@ import { getHyperliquidClient } from './HyperliquidClient';
 import { HYPERLIQUID_CONSTANTS, type OrderSide, type OrderType, type TimeInForce } from './config';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../lib/db';
-import { hyperliquidOrders, type NewHyperliquidOrder, type HyperliquidOrder } from '../../../shared/schema/hyperliquid.schema';
+import { hyperliquidOrders, type NewHyperliquidOrder, type HyperliquidOrder } from '../../../../shared/schema/hyperliquid.schema';
 import { eq, and, desc } from 'drizzle-orm';
 
 /**

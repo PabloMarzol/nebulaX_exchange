@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { getHyperliquidClient } from './HyperliquidClient';
 import { db } from '../../lib/db';
-import { hyperliquidOrders, hyperliquidFills, type NewHyperliquidFill } from '../../../shared/schema/hyperliquid.schema';
+import { hyperliquidOrders, hyperliquidFills, type NewHyperliquidFill } from '../../../../shared/schema/hyperliquid.schema';
 import { eq } from 'drizzle-orm';
 
 /**
