@@ -2,20 +2,32 @@
  * Hyperliquid Integration Module
  *
  * This module provides a complete integration with Hyperliquid's perpetual futures DEX.
- * It includes:
+ *
+ * Phase 1 - Core Infrastructure:
  * - HyperliquidClient: Core API client wrapper
- * - MarketDataService: WebSocket subscription management
- * - MarketDataCache: In-memory caching layer
- * - ReconnectionHandler: Automatic reconnection with exponential backoff
  * - Configuration: Environment validation and constants
  * - Database schema: Drizzle ORM schema for orders, positions, fills
  *
+ * Phase 2 - Market Data:
+ * - MarketDataService: WebSocket subscription management
+ * - MarketDataCache: In-memory caching layer
+ * - ReconnectionHandler: Automatic reconnection with exponential backoff
+ *
+ * Phase 3 - Order Placement:
+ * - OrderExecutionService: Order placement with validation and persistence
+ * - OrderStatusService: Real-time order status tracking via WebSocket
+ *
  * @example
  * ```typescript
- * import { getHyperliquidClient, getMarketDataService } from './services/hyperliquid';
+ * import {
+ *   getHyperliquidClient,
+ *   getMarketDataService,
+ *   getOrderExecutionService,
+ * } from './services/hyperliquid';
  *
  * const client = getHyperliquidClient();
  * const marketData = getMarketDataService();
+ * const orderService = getOrderExecutionService();
  *
  * // Subscribe to market data
  * await marketData.subscribeToOrderbook('BTC');
@@ -24,12 +36,14 @@
  * });
  *
  * // Place an order
- * const result = await client.placeOrder({
- *   coin: 'BTC',
- *   isBuy: true,
+ * const result = await orderService.placeOrder({
+ *   userId: 'user-123',
+ *   userAddress: '0x...',
+ *   symbol: 'BTC',
+ *   side: 'buy',
+ *   orderType: 'limit',
  *   price: 50000,
  *   size: 0.01,
- *   orderType: 'limit',
  * });
  * ```
  */
@@ -83,6 +97,25 @@ export {
   type CandleInterval,
 } from './config';
 
+// Phase 3: Order Placement & Management
+export {
+  OrderExecutionService,
+  getOrderExecutionService,
+  resetOrderExecutionService,
+  OrderValidationError,
+  type PlaceOrderParams,
+  type OrderPlacementResult,
+  type CancelOrderParams,
+} from './OrderExecutionService';
+
+export {
+  OrderStatusService,
+  getOrderStatusService,
+  resetOrderStatusService,
+  type OrderFillEvent,
+  type OrderStatusChangeEvent,
+} from './OrderStatusService';
+
 // Database Schema
 export {
   hyperliquidOrders,
@@ -100,4 +133,4 @@ export {
   type NewHyperliquidReconciliation,
   type HyperliquidUserStateCache,
   type NewHyperliquidUserStateCache,
-} from '../../db/schema/hyperliquid';
+} from '../../../shared/schema/hyperliquid.schema';

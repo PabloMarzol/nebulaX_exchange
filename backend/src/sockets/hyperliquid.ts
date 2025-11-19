@@ -1,12 +1,13 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { getMarketDataService } from '../services/hyperliquid/MarketDataService';
 import { getMarketDataCache } from '../services/hyperliquid/MarketDataCache';
+import { getOrderStatusService } from '../services/hyperliquid/OrderStatusService';
 
 /**
  * Setup Hyperliquid WebSocket handlers for Socket.io
  *
  * This module bridges Hyperliquid's WebSocket API with Socket.io,
- * allowing frontend clients to subscribe to real-time market data.
+ * allowing frontend clients to subscribe to real-time market data and order updates.
  *
  * Events emitted to clients:
  * - orderbook:update - Orderbook changes
@@ -14,6 +15,8 @@ import { getMarketDataCache } from '../services/hyperliquid/MarketDataCache';
  * - candles:update - Candle updates
  * - mids:update - Mid price updates
  * - userEvents:update - User-specific events
+ * - order:fill - Order fill notifications
+ * - order:statusChange - Order status change notifications
  *
  * Events received from clients:
  * - subscribe:orderbook - Subscribe to orderbook
@@ -21,16 +24,20 @@ import { getMarketDataCache } from '../services/hyperliquid/MarketDataCache';
  * - subscribe:candles - Subscribe to candles
  * - subscribe:mids - Subscribe to all mids
  * - subscribe:userEvents - Subscribe to user events
+ * - subscribe:orders - Subscribe to order updates (requires userId and userAddress)
  * - unsubscribe:orderbook - Unsubscribe from orderbook
  * - unsubscribe:trades - Unsubscribe from trades
  * - unsubscribe:candles - Unsubscribe from candles
  * - unsubscribe:mids - Unsubscribe from all mids
  * - unsubscribe:userEvents - Unsubscribe from user events
+ * - unsubscribe:orders - Unsubscribe from order updates
+ * - getStats - Get service statistics
  */
 
 export function setupHyperliquidSocket(io: SocketIOServer) {
   const marketDataService = getMarketDataService();
   const cache = getMarketDataCache();
+  const orderStatusService = getOrderStatusService();
 
   // Track room memberships for cleanup
   const roomMemberships = new Map<string, Set<string>>();
@@ -121,6 +128,22 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
       userAddress,
       data,
     });
+  });
+
+  // Forward order fill events
+  orderStatusService.on('orderFill', (fillEvent) => {
+    // Emit to all clients subscribed to this user's orders
+    io.to(`orders:${fillEvent.userId}`).emit('order:fill', fillEvent);
+    console.log(`[HyperliquidSocket] Order fill event emitted for user ${fillEvent.userId}`);
+  });
+
+  // Forward order status change events
+  orderStatusService.on('orderStatusChange', (statusEvent) => {
+    // Emit to all clients subscribed to this user's orders
+    io.to(`orders:${statusEvent.userId}`).emit('order:statusChange', statusEvent);
+    console.log(
+      `[HyperliquidSocket] Order status change emitted: ${statusEvent.orderId} (${statusEvent.previousStatus} -> ${statusEvent.newStatus})`
+    );
   });
 
   // Handle new client connections
@@ -267,6 +290,28 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
     });
 
     /**
+     * Subscribe to order updates
+     */
+    socket.on('subscribe:orders', async ({ userId, userAddress }: { userId: string; userAddress: string }) => {
+      if (!userId || !userAddress) {
+        socket.emit('error', { message: 'Invalid userId or userAddress' });
+        return;
+      }
+
+      try {
+        console.log(`[HyperliquidSocket] ${socket.id} subscribing to orders: userId=${userId}`);
+
+        joinRoom(socket, `orders:${userId}`);
+        await orderStatusService.subscribeToUserOrders(userId, userAddress);
+
+        socket.emit('subscribed', { type: 'orders', userId });
+      } catch (error: any) {
+        console.error(`[HyperliquidSocket] Error subscribing to orders for user ${userId}:`, error);
+        socket.emit('error', { message: `Failed to subscribe to order updates: ${error.message}` });
+      }
+    });
+
+    /**
      * Unsubscribe from orderbook
      */
     socket.on('unsubscribe:orderbook', async (symbol: string) => {
@@ -347,15 +392,36 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
     });
 
     /**
+     * Unsubscribe from order updates
+     */
+    socket.on('unsubscribe:orders', async ({ userId, userAddress }: { userId: string; userAddress: string }) => {
+      try {
+        console.log(`[HyperliquidSocket] ${socket.id} unsubscribing from orders: userId=${userId}`);
+
+        leaveRoom(socket, `orders:${userId}`);
+        await orderStatusService.unsubscribeFromUserOrders(userAddress);
+
+        socket.emit('unsubscribed', { type: 'orders', userId });
+      } catch (error: any) {
+        console.error(`[HyperliquidSocket] Error unsubscribing from orders for user ${userId}:`, error);
+      }
+    });
+
+    /**
      * Get subscription stats
      */
     socket.on('getStats', () => {
       const marketDataStats = marketDataService.getStats();
       const cacheStats = cache.getStats();
+      const orderStatusStats = {
+        subscriptions: orderStatusService.getSubscriptionCount(),
+        activeUsers: orderStatusService.getActiveSubscriptions(),
+      };
 
       socket.emit('stats', {
         marketData: marketDataStats,
         cache: cacheStats,
+        orderStatus: orderStatusStats,
       });
     });
 
@@ -384,6 +450,13 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
           } else if (room.startsWith('userEvents:')) {
             const userAddress = room.replace('userEvents:', '');
             await marketDataService.unsubscribeFromUserEvents(userAddress).catch(() => {});
+          } else if (room.startsWith('orders:')) {
+            // Extract userAddress from room (format: orders:userId)
+            // Note: We need userAddress to unsubscribe, but we only have userId in room name
+            // This is a limitation - we might need to track userId -> userAddress mapping
+            console.log(`[HyperliquidSocket] Order subscription cleanup for room: ${room}`);
+            // For now, we'll let the subscription remain active until explicit unsubscribe
+            // or implement a userId -> userAddress mapping in the future
           }
         }
 
