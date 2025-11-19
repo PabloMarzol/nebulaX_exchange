@@ -116,6 +116,15 @@ export {
   type OrderStatusChangeEvent,
 } from './OrderStatusService';
 
+// Phase 4: Position Management
+export {
+  PositionManagementService,
+  getPositionManagementService,
+  resetPositionManagementService,
+  type PositionUpdateEvent,
+  type PositionClosedEvent,
+} from './PositionManagementService';
+
 // Database Schema
 export {
   hyperliquidOrders,

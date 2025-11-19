@@ -3,12 +3,14 @@ import { getHyperliquidClient } from '../services/hyperliquid/HyperliquidClient'
 import { getMarketDataCache } from '../services/hyperliquid/MarketDataCache';
 import { getMarketDataService } from '../services/hyperliquid/MarketDataService';
 import { getOrderExecutionService } from '../services/hyperliquid/OrderExecutionService';
+import { getPositionManagementService } from '../services/hyperliquid/PositionManagementService';
 
 const router = Router();
 const client = getHyperliquidClient();
 const cache = getMarketDataCache();
 const marketDataService = getMarketDataService();
 const orderExecutionService = getOrderExecutionService();
+const positionService = getPositionManagementService();
 
 /**
  * GET /api/hyperliquid/symbols
@@ -552,6 +554,230 @@ router.post('/orders/fees/estimate', (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to estimate fees',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/hyperliquid/positions/:userId
+ * Get positions for a user from database
+ */
+router.get('/positions/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { includeClosed } = req.query;
+
+    const positions = await positionService.getUserPositionsFromDb(
+      userId,
+      includeClosed === 'true'
+    );
+
+    res.json({
+      success: true,
+      data: positions,
+      count: positions.length,
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error fetching user positions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch positions',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/hyperliquid/positions/:userId/:symbol
+ * Get a specific position for a user
+ */
+router.get('/positions/:userId/:symbol', async (req: Request, res: Response) => {
+  try {
+    const { userId, symbol } = req.params;
+
+    const position = await positionService.getPositionBySymbol(userId, symbol);
+
+    if (!position) {
+      return res.status(404).json({
+        success: false,
+        error: 'Position not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: position,
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error fetching position:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch position',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/positions/sync
+ * Sync user positions from Hyperliquid API to database
+ */
+router.post('/positions/sync', async (req: Request, res: Response) => {
+  try {
+    const { userId, userAddress } = req.body;
+
+    if (!userId || !userAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, userAddress',
+      });
+    }
+
+    const positions = await positionService.syncUserPositions(userId, userAddress);
+
+    res.json({
+      success: true,
+      data: positions,
+      count: positions.length,
+      message: 'Positions synced successfully',
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error syncing positions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to sync positions',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/positions/close
+ * Close a position by creating a reduce-only order
+ */
+router.post('/positions/close', async (req: Request, res: Response) => {
+  try {
+    const { userId, userAddress, symbol, orderType, limitPrice } = req.body;
+
+    if (!userId || !userAddress || !symbol) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, userAddress, symbol',
+      });
+    }
+
+    const result = await positionService.closePosition({
+      userId,
+      userAddress,
+      symbol,
+      orderType: orderType || 'market',
+      limitPrice,
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error closing position:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to close position',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/hyperliquid/margin/:userAddress
+ * Get margin summary for a user
+ */
+router.get('/margin/:userAddress', async (req: Request, res: Response) => {
+  try {
+    const { userAddress } = req.params;
+
+    const marginSummary = await positionService.getMarginSummary(userAddress);
+
+    if (!marginSummary) {
+      return res.status(404).json({
+        success: false,
+        error: 'Margin summary not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: marginSummary,
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error fetching margin summary:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch margin summary',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/positions/polling/start
+ * Start polling positions for a user
+ */
+router.post('/positions/polling/start', async (req: Request, res: Response) => {
+  try {
+    const { userId, userAddress, intervalMs } = req.body;
+
+    if (!userId || !userAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, userAddress',
+      });
+    }
+
+    await positionService.startPositionPolling(userId, userAddress, intervalMs || 5000);
+
+    res.json({
+      success: true,
+      message: 'Position polling started',
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error starting position polling:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start position polling',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/positions/polling/stop
+ * Stop polling positions for a user
+ */
+router.post('/positions/polling/stop', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: userId',
+      });
+    }
+
+    positionService.stopPositionPolling(userId);
+
+    res.json({
+      success: true,
+      message: 'Position polling stopped',
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error stopping position polling:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to stop position polling',
       message: error.message,
     });
   }

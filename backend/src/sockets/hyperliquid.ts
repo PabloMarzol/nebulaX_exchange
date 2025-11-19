@@ -2,12 +2,13 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { getMarketDataService } from '../services/hyperliquid/MarketDataService';
 import { getMarketDataCache } from '../services/hyperliquid/MarketDataCache';
 import { getOrderStatusService } from '../services/hyperliquid/OrderStatusService';
+import { getPositionManagementService } from '../services/hyperliquid/PositionManagementService';
 
 /**
  * Setup Hyperliquid WebSocket handlers for Socket.io
  *
  * This module bridges Hyperliquid's WebSocket API with Socket.io,
- * allowing frontend clients to subscribe to real-time market data and order updates.
+ * allowing frontend clients to subscribe to real-time market data, order updates, and position tracking.
  *
  * Events emitted to clients:
  * - orderbook:update - Orderbook changes
@@ -17,6 +18,8 @@ import { getOrderStatusService } from '../services/hyperliquid/OrderStatusServic
  * - userEvents:update - User-specific events
  * - order:fill - Order fill notifications
  * - order:statusChange - Order status change notifications
+ * - position:update - Position update notifications
+ * - position:closed - Position closed notifications
  *
  * Events received from clients:
  * - subscribe:orderbook - Subscribe to orderbook
@@ -25,12 +28,14 @@ import { getOrderStatusService } from '../services/hyperliquid/OrderStatusServic
  * - subscribe:mids - Subscribe to all mids
  * - subscribe:userEvents - Subscribe to user events
  * - subscribe:orders - Subscribe to order updates (requires userId and userAddress)
+ * - subscribe:positions - Subscribe to position updates (requires userId and userAddress)
  * - unsubscribe:orderbook - Unsubscribe from orderbook
  * - unsubscribe:trades - Unsubscribe from trades
  * - unsubscribe:candles - Unsubscribe from candles
  * - unsubscribe:mids - Unsubscribe from all mids
  * - unsubscribe:userEvents - Unsubscribe from user events
  * - unsubscribe:orders - Unsubscribe from order updates
+ * - unsubscribe:positions - Unsubscribe from position updates
  * - getStats - Get service statistics
  */
 
@@ -38,6 +43,7 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
   const marketDataService = getMarketDataService();
   const cache = getMarketDataCache();
   const orderStatusService = getOrderStatusService();
+  const positionService = getPositionManagementService();
 
   // Track room memberships for cleanup
   const roomMemberships = new Map<string, Set<string>>();
@@ -143,6 +149,24 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
     io.to(`orders:${statusEvent.userId}`).emit('order:statusChange', statusEvent);
     console.log(
       `[HyperliquidSocket] Order status change emitted: ${statusEvent.orderId} (${statusEvent.previousStatus} -> ${statusEvent.newStatus})`
+    );
+  });
+
+  // Forward position update events
+  positionService.on('positionUpdate', (positionEvent) => {
+    // Emit to all clients subscribed to this user's positions
+    io.to(`positions:${positionEvent.userId}`).emit('position:update', positionEvent);
+    console.log(
+      `[HyperliquidSocket] Position update emitted: ${positionEvent.symbol} (${positionEvent.side}) PnL: ${positionEvent.unrealizedPnl}`
+    );
+  });
+
+  // Forward position closed events
+  positionService.on('positionClosed', (closedEvent) => {
+    // Emit to all clients subscribed to this user's positions
+    io.to(`positions:${closedEvent.userId}`).emit('position:closed', closedEvent);
+    console.log(
+      `[HyperliquidSocket] Position closed emitted: ${closedEvent.symbol} (${closedEvent.side}) Realized PnL: ${closedEvent.realizedPnl}`
     );
   });
 
@@ -312,6 +336,34 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
     });
 
     /**
+     * Subscribe to position updates
+     */
+    socket.on('subscribe:positions', async ({ userId, userAddress, intervalMs }: { userId: string; userAddress: string; intervalMs?: number }) => {
+      if (!userId || !userAddress) {
+        socket.emit('error', { message: 'Invalid userId or userAddress' });
+        return;
+      }
+
+      try {
+        console.log(`[HyperliquidSocket] ${socket.id} subscribing to positions: userId=${userId}`);
+
+        joinRoom(socket, `positions:${userId}`);
+
+        // Start position polling for this user
+        await positionService.startPositionPolling(userId, userAddress, intervalMs || 5000);
+
+        // Send current positions immediately
+        const positions = await positionService.getUserPositionsFromDb(userId);
+        socket.emit('positions:snapshot', { positions });
+
+        socket.emit('subscribed', { type: 'positions', userId });
+      } catch (error: any) {
+        console.error(`[HyperliquidSocket] Error subscribing to positions for user ${userId}:`, error);
+        socket.emit('error', { message: `Failed to subscribe to position updates: ${error.message}` });
+      }
+    });
+
+    /**
      * Unsubscribe from orderbook
      */
     socket.on('unsubscribe:orderbook', async (symbol: string) => {
@@ -408,6 +460,22 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
     });
 
     /**
+     * Unsubscribe from position updates
+     */
+    socket.on('unsubscribe:positions', async ({ userId }: { userId: string }) => {
+      try {
+        console.log(`[HyperliquidSocket] ${socket.id} unsubscribing from positions: userId=${userId}`);
+
+        leaveRoom(socket, `positions:${userId}`);
+        positionService.stopPositionPolling(userId);
+
+        socket.emit('unsubscribed', { type: 'positions', userId });
+      } catch (error: any) {
+        console.error(`[HyperliquidSocket] Error unsubscribing from positions for user ${userId}:`, error);
+      }
+    });
+
+    /**
      * Get subscription stats
      */
     socket.on('getStats', () => {
@@ -457,6 +525,11 @@ export function setupHyperliquidSocket(io: SocketIOServer) {
             console.log(`[HyperliquidSocket] Order subscription cleanup for room: ${room}`);
             // For now, we'll let the subscription remain active until explicit unsubscribe
             // or implement a userId -> userAddress mapping in the future
+          } else if (room.startsWith('positions:')) {
+            // Stop position polling for this user
+            const userId = room.replace('positions:', '');
+            positionService.stopPositionPolling(userId);
+            console.log(`[HyperliquidSocket] Position polling stopped for user: ${userId}`);
           }
         }
 
