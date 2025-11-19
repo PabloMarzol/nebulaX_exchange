@@ -17,6 +17,15 @@
  * - OrderExecutionService: Order placement with validation and persistence
  * - OrderStatusService: Real-time order status tracking via WebSocket
  *
+ * Phase 4 - Position Management:
+ * - PositionManagementService: Position tracking and P&L calculations
+ *
+ * Phase 5 - Error Handling & Resilience:
+ * - CircuitBreaker: Prevents cascading failures
+ * - RetryHandler: Exponential backoff retry logic
+ * - RateLimiter: Token bucket rate limiting
+ * - ReconciliationService: Order and position reconciliation
+ *
  * @example
  * ```typescript
  * import {
@@ -124,6 +133,38 @@ export {
   type PositionUpdateEvent,
   type PositionClosedEvent,
 } from './PositionManagementService';
+
+// Phase 5: Error Handling & Resilience
+export {
+  CircuitBreaker,
+  createCircuitBreaker,
+  CircuitState,
+  type CircuitBreakerConfig,
+  type CircuitBreakerStats,
+} from './CircuitBreaker';
+
+export {
+  RetryHandler,
+  createRetryHandler,
+  retryWithBackoff,
+  type RetryConfig,
+  type RetryStats,
+} from './RetryHandler';
+
+export {
+  RateLimiter,
+  createRateLimiter,
+  type RateLimiterConfig,
+  type RateLimiterStats,
+} from './RateLimiter';
+
+export {
+  ReconciliationService,
+  getReconciliationService,
+  resetReconciliationService,
+  type DiscrepancyEvent,
+  type ReconciliationResult,
+} from './ReconciliationService';
 
 // Database Schema
 export {

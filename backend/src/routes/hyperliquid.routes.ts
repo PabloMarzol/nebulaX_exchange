@@ -4,6 +4,7 @@ import { getMarketDataCache } from '../services/hyperliquid/MarketDataCache';
 import { getMarketDataService } from '../services/hyperliquid/MarketDataService';
 import { getOrderExecutionService } from '../services/hyperliquid/OrderExecutionService';
 import { getPositionManagementService } from '../services/hyperliquid/PositionManagementService';
+import { getReconciliationService } from '../services/hyperliquid/ReconciliationService';
 
 const router = Router();
 const client = getHyperliquidClient();
@@ -11,6 +12,7 @@ const cache = getMarketDataCache();
 const marketDataService = getMarketDataService();
 const orderExecutionService = getOrderExecutionService();
 const positionService = getPositionManagementService();
+const reconciliationService = getReconciliationService();
 
 /**
  * GET /api/hyperliquid/symbols
@@ -778,6 +780,113 @@ router.post('/positions/polling/stop', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to stop position polling',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/reconciliation/run
+ * Run reconciliation for a user
+ */
+router.post('/reconciliation/run', async (req: Request, res: Response) => {
+  try {
+    const { userId, userAddress } = req.body;
+
+    if (!userId || !userAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, userAddress',
+      });
+    }
+
+    const result = await reconciliationService.reconcileUser(userId, userAddress);
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error running reconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to run reconciliation',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/reconciliation/start
+ * Start periodic reconciliation for a user
+ */
+router.post('/reconciliation/start', async (req: Request, res: Response) => {
+  try {
+    const { userId, userAddress, intervalMs } = req.body;
+
+    if (!userId || !userAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, userAddress',
+      });
+    }
+
+    reconciliationService.startPeriodicReconciliation(userId, userAddress, intervalMs || 300000);
+
+    res.json({
+      success: true,
+      message: 'Periodic reconciliation started',
+      interval: intervalMs || 300000,
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error starting reconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start reconciliation',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/hyperliquid/reconciliation/stop
+ * Stop periodic reconciliation
+ */
+router.post('/reconciliation/stop', (req: Request, res: Response) => {
+  try {
+    reconciliationService.stopPeriodicReconciliation();
+
+    res.json({
+      success: true,
+      message: 'Periodic reconciliation stopped',
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error stopping reconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to stop reconciliation',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/hyperliquid/reconciliation/stats
+ * Get reconciliation statistics
+ */
+router.get('/reconciliation/stats', (req: Request, res: Response) => {
+  try {
+    const stats = reconciliationService.getStats();
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error: any) {
+    console.error('[HyperliquidRoutes] Error getting reconciliation stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get stats',
       message: error.message,
     });
   }
