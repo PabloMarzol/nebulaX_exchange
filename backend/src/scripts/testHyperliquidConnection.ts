@@ -12,9 +12,10 @@
 
 import dotenv from 'dotenv';
 import { getHyperliquidClient } from '../services/hyperliquid';
+import path from 'path';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from root .env file
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
 async function main() {
   console.log('🚀 Testing Hyperliquid API Connection...\n');
