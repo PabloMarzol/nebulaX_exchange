@@ -1,14 +1,4 @@
-#!/usr/bin/env tsx
 
-/**
- * Test Hyperliquid API Connection
- *
- * This script tests the connection to Hyperliquid's API and displays
- * basic market data to verify the integration is working.
- *
- * Usage:
- *   pnpm tsx src/scripts/testHyperliquidConnection.ts
- */
 
 import dotenv from 'dotenv';
 import { getHyperliquidClient } from '../services/hyperliquid';
