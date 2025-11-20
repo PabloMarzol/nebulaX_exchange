@@ -4,14 +4,17 @@
  * Creates the PostgreSQL database if it doesn't exist
  */
 
-const { spawn } = require('child_process');
-const path = require('path');
-const fs = require('fs');
+import {spawn} from "child_process";
+import path from "path";
+import fs from "fs";
+// const { spawn } = require('child_process');
+// const path = require('path');
+// const fs = require('fs');
 
 // Load environment variables
-const dotenv = require('dotenv');
-const envPath = path.resolve(__dirname, '../.env');
-dotenv.config({ path: envPath });
+// const dotenv = require('dotenv');
+import dotenv from "dotenv";
+dotenv.config({ path: '../.env' });
 
 // Parse DATABASE_URL
 const DATABASE_URL = process.env.DATABASE_URL;
