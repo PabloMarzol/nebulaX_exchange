@@ -1,41 +1,301 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { tradingLimiter } from '../middleware/rateLimit.middleware.js';
+import { OrderExecutionService } from '../services/hyperliquid/OrderExecutionService.js';
+import { z } from 'zod';
 
 const router = Router();
+const orderService = OrderExecutionService.getInstance();
 
 // All trading routes require authentication
 router.use(authenticate);
 router.use(tradingLimiter);
 
-// Place order
-router.post('/orders', (req, res) => {
-  res.json({ message: 'Place order endpoint (To be implemented)' });
+// Validation schemas
+const placeOrderSchema = z.object({
+  symbol: z.string().min(1, 'Symbol is required'),
+  side: z.enum(['buy', 'sell'], { required_error: 'Side must be buy or sell' }),
+  type: z.enum(['limit', 'market'], { required_error: 'Type must be limit or market' }),
+  price: z.number().positive().optional(),
+  quantity: z.number().positive('Quantity must be positive'),
+  leverage: z.number().positive().optional(),
+  timeInForce: z.enum(['Gtc', 'Ioc', 'Alo']).optional(),
+  reduceOnly: z.boolean().optional(),
+  postOnly: z.boolean().optional(),
 });
 
-// Get user orders
-router.get('/orders', (req, res) => {
-  res.json({ message: 'Get orders endpoint (To be implemented)' });
+const cancelOrderParamsSchema = z.object({
+  id: z.string().min(1, 'Order ID is required'),
 });
 
-// Get open orders
-router.get('/orders/open', (req, res) => {
-  res.json({ message: 'Get open orders endpoint (To be implemented)' });
+const symbolQuerySchema = z.object({
+  symbol: z.string().optional(),
 });
 
-// Cancel order
-router.delete('/orders/:id', (req, res) => {
-  res.json({ message: 'Cancel order endpoint (To be implemented)' });
+const orderHistoryQuerySchema = z.object({
+  symbol: z.string().optional(),
+  limit: z.string().optional(),
 });
 
-// Get trade history
-router.get('/trades', (req, res) => {
-  res.json({ message: 'Get trades endpoint (To be implemented)' });
+/**
+ * POST /api/trading/orders
+ * Place a new order
+ */
+router.post('/orders', async (req: Request, res: Response) => {
+  try {
+    const validation = placeOrderSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error.errors,
+      });
+    }
+
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const result = await orderService.placeOrder({
+      userId,
+      ...validation.data,
+    });
+
+    res.status(201).json(result);
+  } catch (error: any) {
+    console.error('Error placing order:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to place order',
+    });
+  }
 });
 
-// Get positions
-router.get('/positions', (req, res) => {
-  res.json({ message: 'Get positions endpoint (To be implemented)' });
+/**
+ * GET /api/trading/orders
+ * Get user's order history
+ */
+router.get('/orders', async (req: Request, res: Response) => {
+  try {
+    const validation = orderHistoryQuerySchema.safeParse(req.query);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error.errors,
+      });
+    }
+
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const { symbol, limit } = validation.data;
+    const orders = await orderService.getOrderHistory(
+      userId,
+      symbol,
+      limit ? parseInt(limit) : 100
+    );
+
+    res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error: any) {
+    console.error('Error fetching orders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch orders',
+    });
+  }
+});
+
+/**
+ * GET /api/trading/orders/open
+ * Get user's open orders
+ */
+router.get('/orders/open', async (req: Request, res: Response) => {
+  try {
+    const validation = symbolQuerySchema.safeParse(req.query);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error.errors,
+      });
+    }
+
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const { symbol } = validation.data;
+    const orders = await orderService.getOpenOrders(userId, symbol);
+
+    res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error: any) {
+    console.error('Error fetching open orders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch open orders',
+    });
+  }
+});
+
+/**
+ * DELETE /api/trading/orders/:id
+ * Cancel a specific order
+ */
+router.delete('/orders/:id', async (req: Request, res: Response) => {
+  try {
+    const validation = cancelOrderParamsSchema.safeParse(req.params);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error.errors,
+      });
+    }
+
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const { symbol } = req.query;
+    if (!symbol || typeof symbol !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Symbol query parameter is required',
+      });
+    }
+
+    const result = await orderService.cancelOrder({
+      userId,
+      orderId: validation.data.id,
+      symbol,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error canceling order:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to cancel order',
+    });
+  }
+});
+
+/**
+ * DELETE /api/trading/orders
+ * Cancel all orders (optionally for a specific symbol)
+ */
+router.delete('/orders', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const { symbol } = req.query;
+    const result = await orderService.cancelAllOrders(
+      userId,
+      symbol as string | undefined
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error canceling all orders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to cancel all orders',
+    });
+  }
+});
+
+/**
+ * GET /api/trading/trades
+ * Get user's trade history (fills)
+ */
+router.get('/trades', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    // TODO: Implement trade history fetching from database
+    // For now, return empty array
+    res.json({
+      success: true,
+      data: [],
+      message: 'Trade history will be implemented',
+    });
+  } catch (error: any) {
+    console.error('Error fetching trades:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch trades',
+    });
+  }
+});
+
+/**
+ * GET /api/trading/positions
+ * Get user's open positions
+ */
+router.get('/positions', async (req: Request, res: Response) => {
+  try {
+    const validation = symbolQuerySchema.safeParse(req.query);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: validation.error.errors,
+      });
+    }
+
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated',
+      });
+    }
+
+    const { symbol } = validation.data;
+    const positions = await orderService.getPositions(userId, symbol);
+
+    res.json({
+      success: true,
+      data: positions,
+    });
+  } catch (error: any) {
+    console.error('Error fetching positions:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch positions',
+    });
+  }
 });
 
 export default router;

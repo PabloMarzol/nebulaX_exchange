@@ -65,3 +65,38 @@ export function debounce<T extends (...args: any[]) => any>(
     timeout = setTimeout(() => func(...args), wait);
   };
 }
+
+/**
+ * Format price with custom decimals
+ */
+export function formatPrice(value: number | string, decimals: number = 2): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return '$0.00';
+  return `$${num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+
+/**
+ * Format percentage with sign
+ */
+export function formatPercentage(value: number | string): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return '0.00%';
+  const sign = num >= 0 ? '+' : '';
+  return `${sign}${num.toFixed(2)}%`;
+}
+
+/**
+ * Abbreviate large numbers (1000 -> 1K, 1000000 -> 1M, etc.)
+ */
+export function abbreviateNumber(value: number): string {
+  if (value >= 1_000_000_000) {
+    return (value / 1_000_000_000).toFixed(2) + 'B';
+  }
+  if (value >= 1_000_000) {
+    return (value / 1_000_000).toFixed(2) + 'M';
+  }
+  if (value >= 1_000) {
+    return (value / 1_000).toFixed(2) + 'K';
+  }
+  return value.toFixed(2);
+}
