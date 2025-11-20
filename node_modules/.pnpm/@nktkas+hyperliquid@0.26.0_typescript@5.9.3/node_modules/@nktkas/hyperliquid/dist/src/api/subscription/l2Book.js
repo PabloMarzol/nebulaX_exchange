@@ -1,0 +1,66 @@
+import * as v from "valibot";
+import { Integer, parser, UnsignedInteger } from "../_base.js";
+import { L2BookLevelSchema } from "../_common_schemas.js";
+// -------------------- Schemas --------------------
+/** Subscription to L2 order book events for a specific asset. */
+export const L2BookRequest = /* @__PURE__ */ (() => {
+    return v.pipe(v.object({
+        /** Type of subscription. */
+        type: v.pipe(v.literal("l2Book"), v.description("Type of subscription.")),
+        /** Asset symbol (e.g., BTC). */
+        coin: v.pipe(v.string(), v.description("Asset symbol (e.g., BTC).")),
+        /** Number of significant figures. */
+        nSigFigs: v.pipe(v.nullish(v.pipe(Integer, v.union([v.literal(2), v.literal(3), v.literal(4), v.literal(5)]))), v.description("Number of significant figures.")),
+        /** Mantissa for aggregation (if `nSigFigs` is 5). */
+        mantissa: v.pipe(v.nullish(v.pipe(Integer, v.union([v.literal(2), v.literal(5)]))), v.description("Mantissa for aggregation (if `nSigFigs` is 5).")),
+    }), v.description("Subscription to L2 order book events for a specific asset."));
+})();
+/** Event of L2 order book snapshot. */
+export const L2BookEvent = /* @__PURE__ */ (() => {
+    return v.pipe(v.object({
+        /** Asset symbol. */
+        coin: v.pipe(v.string(), v.description("Asset symbol.")),
+        /** Timestamp of the snapshot (in ms since epoch). */
+        time: v.pipe(UnsignedInteger, v.description("Timestamp of the snapshot (in ms since epoch).")),
+        /** Bid and ask levels (index 0 = bids, index 1 = asks). */
+        levels: v.pipe(v.tuple([v.array(L2BookLevelSchema), v.array(L2BookLevelSchema)]), v.description("Bid and ask levels (index 0 = bids, index 1 = asks).")),
+    }), v.description("L2 order book snapshot."));
+})();
+/**
+ * Subscribe to L2 order book updates for a specific asset.
+ * @param config - General configuration for Subscription API subscriptions.
+ * @param params - Parameters specific to the API subscription.
+ * @param listener - A callback function to be called when the event is received.
+ * @returns A request-promise that resolves with a {@link Subscription} object to manage the subscription lifecycle.
+ *
+ * @throws {TransportError} When the transport layer throws an error.
+ *
+ * @see https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions
+ * @example
+ * ```ts
+ * import { WebSocketTransport } from "@nktkas/hyperliquid";
+ * import { l2Book } from "@nktkas/hyperliquid/api/subscription";
+ *
+ * const transport = new WebSocketTransport();
+ *
+ * const sub = await l2Book(
+ *   { transport },
+ *   { coin: "ETH" },
+ *   (data) => console.log(data),
+ * );
+ * ```
+ */
+export function l2Book(config, params, listener) {
+    const payload = parser(L2BookRequest)({
+        type: "l2Book",
+        ...params,
+        nSigFigs: params.nSigFigs ?? null,
+        mantissa: params.mantissa ?? null,
+    });
+    return config.transport.subscribe(payload.type, payload, (e) => {
+        if (e.detail.coin === payload.coin) {
+            listener(e.detail);
+        }
+    });
+}
+//# sourceMappingURL=l2Book.js.map
