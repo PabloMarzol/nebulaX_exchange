@@ -98,10 +98,10 @@ describe('HyperliquidClient', () => {
 });
 
 /**
- * Integration tests - only run when HYPERLIQUID_WALLET is set
+ * Integration tests - only run when HYPERLIQUID_LIVE_API_WALLE is set
  */
 describe('HyperliquidClient Integration Tests', () => {
-  const walletAddress = process.env.HYPERLIQUID_WALLET;
+  const walletAddress = process.env.HYPERLIQUID_LIVE_API_WALLE;
 
   // Skip if wallet address is not configured
   const runIf = walletAddress && walletAddress !== '0x...' ? it : it.skip;

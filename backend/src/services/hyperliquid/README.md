@@ -19,7 +19,7 @@ Add to your `.env` file:
 
 ```bash
 HYPERLIQUID_TESTNET=true
-HYPERLIQUID_WALLET=0x...                                  # Main wallet address
+HYPERLIQUID_LIVE_API_WALLE=0x...                                  # Main wallet address
 HYPERLIQUID_API_PRIVATE_KEY=0x...                        # API wallet private key
 HYPERLIQUID_MAINNET_URL=https://api.hyperliquid.xyz
 HYPERLIQUID_TESTNET_URL=https://api.hyperliquid-testnet.xyz

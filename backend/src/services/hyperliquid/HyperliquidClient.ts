@@ -357,12 +357,12 @@ let hyperliquidClientInstance: HyperliquidClient | null = null;
 export function getHyperliquidClient(): HyperliquidClient {
   if (!hyperliquidClientInstance) {
     const testnet = process.env.HYPERLIQUID_TESTNET === 'true';
-    const apiPrivateKey = process.env.HYPERLIQUID_API_PRIVATE_KEY || process.env.HYPERLIQUID_PRIVATE_KEY;
-    const walletAddress = process.env.HYPERLIQUID_WALLET;
+    const apiPrivateKey = process.env.HYPERLIQUID_API_PRIVATE_KEY || process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
+    const walletAddress = process.env.HYPERLIQUID_LIVE_API_WALLE;
 
     if (!apiPrivateKey) {
       throw new Error(
-        'HYPERLIQUID_API_PRIVATE_KEY or HYPERLIQUID_PRIVATE_KEY is required in environment variables'
+        'HYPERLIQUID_API_PRIVATE_KEY or HYPERLIQUID_LIVE_API_PRIVATE_KEY is required in environment variables'
       );
     }
 

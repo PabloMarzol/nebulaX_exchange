@@ -296,7 +296,7 @@ Add to `.env`:
 ```bash
 # Hyperliquid Configuration
 HYPERLIQUID_TESTNET=true                           # Set to false for mainnet
-HYPERLIQUID_WALLET=0x...                          # Main wallet address
+HYPERLIQUID_LIVE_API_WALLE=0x...                          # Main wallet address
 HYPERLIQUID_API_PRIVATE_KEY=0x...                 # API wallet private key (NOT main wallet!)
 HYPERLIQUID_MAINNET_URL=https://api.hyperliquid.xyz
 HYPERLIQUID_TESTNET_URL=https://api.hyperliquid-testnet.xyz
@@ -675,7 +675,7 @@ export function getHyperliquidClient(): HyperliquidClient {
   if (!hyperliquidClientInstance) {
     hyperliquidClientInstance = new HyperliquidClient({
       testnet: process.env.HYPERLIQUID_TESTNET === 'true',
-      walletAddress: process.env.HYPERLIQUID_WALLET!,
+      walletAddress: process.env.HYPERLIQUID_LIVE_API_WALLE!,
       apiPrivateKey: process.env.HYPERLIQUID_API_PRIVATE_KEY!,
     });
   }

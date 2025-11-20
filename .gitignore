@@ -13,3 +13,6 @@ CLAUDE.md
 .github
 
 
+node_modules
+backend/node_modules
+apps/web/node_modules

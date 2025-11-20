@@ -73,7 +73,7 @@ async function main() {
         console.log('      This is normal if the wallet has no activity\n');
       }
     } else {
-      console.log('4️⃣  Skipping user data (HYPERLIQUID_WALLET not configured)\n');
+      console.log('4️⃣  Skipping user data (HYPERLIQUID_LIVE_API_WALLE not configured)\n');
     }
 
     // Test 5: Test WebSocket subscription (briefly)
@@ -122,7 +122,7 @@ async function main() {
     if (error.message.includes('Invalid Hyperliquid configuration')) {
       console.log('💡 Tips:');
       console.log('   1. Make sure you have a .env file in the root directory');
-      console.log('   2. Add HYPERLIQUID_API_PRIVATE_KEY or HYPERLIQUID_PRIVATE_KEY');
+      console.log('   2. Add HYPERLIQUID_API_PRIVATE_KEY or HYPERLIQUID_LIVE_API_PRIVATE_KEY');
       console.log('   3. The private key should start with 0x and be 64 hex characters');
       console.log('   4. Set HYPERLIQUID_TESTNET=true for testing\n');
     }
