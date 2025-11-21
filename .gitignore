@@ -15,11 +15,15 @@ CLAUDE.md
 # Dependencies
 node_modules/
 */node_modules/
+**/node_modules/
+.pnpm-store/
 
 # Build outputs
 dist/
 build/
 *.tsbuildinfo
+.next/
+.turbo/
 
 # Logs
 logs/
@@ -39,3 +43,20 @@ Thumbs.db
 node_modules
 backend/node_modules
 apps/web/node_modules
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
