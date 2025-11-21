@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { devAuth } from '../middleware/auth.middleware.js';
 import { tradingLimiter } from '../middleware/rateLimit.middleware.js';
 import { OrderExecutionService } from '../services/hyperliquid/OrderExecutionService.js';
 import { z } from 'zod';
@@ -7,8 +7,8 @@ import { z } from 'zod';
 const router = Router();
 const orderService = OrderExecutionService.getInstance();
 
-// All trading routes require authentication
-router.use(authenticate);
+// All trading routes require authentication (or use dev wallet from env)
+router.use(devAuth);
 router.use(tradingLimiter);
 
 // Validation schemas
