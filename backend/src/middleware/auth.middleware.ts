@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { AppError } from './error.middleware.js';
-
+import dotenv from "dotenv";
+dotenv.config()
 export interface AuthRequest extends Request {
   user?: {
     id: string;

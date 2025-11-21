@@ -12,6 +12,9 @@ interface HyperliquidConfig {
   apiPrivateKey: string;
 }
 
+import dotenv from "dotenv";
+dotenv.config()
+
 /**
  * Hyperliquid API Client Wrapper
  *
@@ -459,9 +462,9 @@ let hyperliquidClientInstance: HyperliquidClient | null = null;
  */
 export function getHyperliquidClient(): HyperliquidClient {
   if (!hyperliquidClientInstance) {
-    const testnet = process.env.HYPERLIQUID_TESTNET === 'true';
-    const apiPrivateKey = process.env.HYPERLIQUID_API_PRIVATE_KEY || process.env.HYPERLIQUID_PRIVATE_KEY;
-    const walletAddress = process.env.HYPERLIQUID_WALLET;
+    const testnet = process.env.HYPERLIQUID_TESTNET === 'false';
+    const apiPrivateKey = process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
+    const walletAddress = process.env.HYPERLIQUID_LIVE_API_WALLET;
 
     if (!apiPrivateKey) {
       throw new Error(
