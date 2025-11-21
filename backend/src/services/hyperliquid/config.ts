@@ -22,8 +22,8 @@ export type HyperliquidConfig = z.infer<typeof hyperliquidConfigSchema>;
  */
 export function loadHyperliquidConfig(): HyperliquidConfig {
   const testnet = process.env.HYPERLIQUID_TESTNET === 'true';
-  const apiPrivateKey = process.env.HYPERLIQUID_API_PRIVATE_KEY || process.env.HYPERLIQUID_PRIVATE_KEY;
-  const wallet = process.env.HYPERLIQUID_WALLET;
+  const apiPrivateKey = process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
+  const wallet = process.env.HYPERLIQUID_LIVE_API_WALLET;
 
   const config = {
     testnet,

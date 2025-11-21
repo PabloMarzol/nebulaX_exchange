@@ -74,12 +74,12 @@ export function devAuth(req: AuthRequest, res: Response, next: NextFunction) {
     }
 
     // If no token and in development, use wallet from env vars
-    if (env.HYPERLIQUID_WALLET) {
+    if (process.env.HYPERLIQUID_LIVE_API_WALLET) {
       req.user = {
         id: 'dev-user',
-        walletAddress: env.HYPERLIQUID_WALLET,
+        walletAddress: process.env.HYPERLIQUID_LIVE_API_WALLET,
       };
-      console.log('[DevAuth] Using development wallet:', env.HYPERLIQUID_WALLET);
+      console.log('[DevAuth] Using development wallet:', process.env.HYPERLIQUID_LIVE_API_WALLET);
       return next();
     }
 
@@ -88,10 +88,10 @@ export function devAuth(req: AuthRequest, res: Response, next: NextFunction) {
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
       // If JWT is invalid but we have a dev wallet, use that
-      if (env.HYPERLIQUID_WALLET) {
+      if (process.env.HYPERLIQUID_LIVE_API_WALLET) {
         req.user = {
           id: 'dev-user',
-          walletAddress: env.HYPERLIQUID_WALLET,
+          walletAddress: process.env.HYPERLIQUID_LIVE_API_WALLET,
         };
         return next();
       }
