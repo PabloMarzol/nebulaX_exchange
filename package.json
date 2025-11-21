@@ -15,6 +15,8 @@
     "test:api": "pnpm --filter backend test",
     "test:e2e": "pnpm --filter web test:e2e",
     "type-check": "pnpm --recursive type-check",
+    "db:setup": "node scripts/setup-db.js",
+    "db:create": "psql -U postgres -f scripts/create-db.sql",
     "migrate": "pnpm --filter backend migrate",
     "db:push": "pnpm --filter backend db:push",
     "db:studio": "pnpm --filter backend db:studio",
@@ -35,9 +37,17 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
-    "typescript": "^5.6.3",
-    "prettier": "^3.1.0",
     "eslint": "^8.55.0",
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "prettier": "^3.1.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pnpm": "^10.22.0",
+    "vite": "^7.2.2",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }

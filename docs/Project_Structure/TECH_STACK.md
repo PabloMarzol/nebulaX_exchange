@@ -729,8 +729,8 @@ import { Hyperliquid } from '@nktkas/hyperliquid';
 
 const hl = new Hyperliquid({
   testnet: process.env.HYPERLIQUID_TESTNET === 'true',
-  walletAddress: process.env.HYPERLIQUID_WALLET,
-  privateKey: process.env.HYPERLIQUID_PRIVATE_KEY,
+  walletAddress: process.env.HYPERLIQUID_LIVE_API_WALLE,
+  privateKey: process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY,
 });
 
 // Place order
@@ -756,8 +756,8 @@ async function placeOrder(params: {
 
 ```bash
 HYPERLIQUID_TESTNET=false
-HYPERLIQUID_WALLET=0x...
-HYPERLIQUID_PRIVATE_KEY=...
+HYPERLIQUID_LIVE_API_WALLE=0x...
+HYPERLIQUID_LIVE_API_PRIVATE_KEY=...
 ```
 
 ---
@@ -1133,8 +1133,8 @@ VITE_STRIPE_PUBLIC_KEY=
 STRIPE_WEBHOOK_SECRET=
 ZERO_X_API_KEY=
 VITE_ZERO_X_API_KEY=
-HYPERLIQUID_WALLET=
-HYPERLIQUID_PRIVATE_KEY=
+HYPERLIQUID_LIVE_API_WALLE=
+HYPERLIQUID_LIVE_API_PRIVATE_KEY=
 JWT_SECRET=
 JWT_EXPIRATION=7d
 FRONTEND_URL=http://localhost:5000

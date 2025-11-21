@@ -285,7 +285,7 @@ Added to `.env.example` and `.env`:
 ```bash
 # Hyperliquid Configuration
 HYPERLIQUID_TESTNET=false                          # Set to true for testnet
-HYPERLIQUID_WALLET=0x...                          # Main wallet address (optional)
+HYPERLIQUID_LIVE_API_WALLE=0x...                          # Main wallet address (optional)
 HYPERLIQUID_API_PRIVATE_KEY=0x...                 # API wallet private key
 HYPERLIQUID_MAINNET_URL=https://api.hyperliquid.xyz
 HYPERLIQUID_TESTNET_URL=https://api.hyperliquid-testnet.xyz
