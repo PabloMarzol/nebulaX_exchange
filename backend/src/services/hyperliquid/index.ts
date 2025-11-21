@@ -183,4 +183,4 @@ export {
   type NewHyperliquidReconciliation,
   type HyperliquidUserStateCache,
   type NewHyperliquidUserStateCache,
-} from '../../../../shared/schema/hyperliquid.schema';
+} from "../../db/schema/hyperliquid";
