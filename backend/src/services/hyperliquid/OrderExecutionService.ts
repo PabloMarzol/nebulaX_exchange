@@ -91,28 +91,32 @@ export class OrderExecutionService {
         throw new Error(`Order placement failed: ${result.response}`);
       }
 
-      // Store order in database
+      // Store order in database (if available)
       const orderData = result.response.data?.statuses?.[0];
-      if (orderData) {
-        await db.insert(hyperliquidOrders).values({
-          userId,
-          symbol,
-          orderId: orderData.resting?.oid?.toString() || `temp-${Date.now()}`,
-          clientOrderId: null,
-          side,
-          type,
-          price: price?.toString() || null,
-          quantity: quantity.toString(),
-          filledQuantity: '0',
-          remainingQuantity: quantity.toString(),
-          status: 'open',
-          timeInForce: timeInForce || 'Gtc',
-          reduceOnly: reduceOnly || false,
-          postOnly: postOnly || false,
-          leverage: leverage?.toString() || null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
+      if (orderData && db) {
+        try {
+          await db.insert(hyperliquidOrders).values({
+            userId,
+            symbol,
+            orderId: orderData.resting?.oid?.toString() || `temp-${Date.now()}`,
+            clientOrderId: null,
+            side,
+            type,
+            price: price?.toString() || null,
+            quantity: quantity.toString(),
+            filledQuantity: '0',
+            remainingQuantity: quantity.toString(),
+            status: 'open',
+            timeInForce: timeInForce || 'Gtc',
+            reduceOnly: reduceOnly || false,
+            postOnly: postOnly || false,
+            leverage: leverage?.toString() || null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available, skipping order persistence');
+        }
       }
 
       console.log('[OrderExecutionService] Order placed successfully:', result);
@@ -146,19 +150,25 @@ export class OrderExecutionService {
         throw new Error(`Order cancellation failed: ${result.response}`);
       }
 
-      // Update order status in database
-      await db
-        .update(hyperliquidOrders)
-        .set({
-          status: 'cancelled',
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(hyperliquidOrders.userId, userId),
-            eq(hyperliquidOrders.orderId, orderId)
-          )
-        );
+      // Update order status in database (if available)
+      if (db) {
+        try {
+          await db
+            .update(hyperliquidOrders)
+            .set({
+              status: 'cancelled',
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(hyperliquidOrders.userId, userId),
+                eq(hyperliquidOrders.orderId, orderId)
+              )
+            );
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available, skipping status update');
+        }
+      }
 
       console.log('[OrderExecutionService] Order cancelled successfully:', result);
 
@@ -179,17 +189,33 @@ export class OrderExecutionService {
     try {
       console.log('[OrderExecutionService] Canceling all orders for user:', userId);
 
-      // Get all open orders from database
-      const openOrders = await db
-        .select()
-        .from(hyperliquidOrders)
-        .where(
-          and(
-            eq(hyperliquidOrders.userId, userId),
-            eq(hyperliquidOrders.status, 'open'),
-            symbol ? eq(hyperliquidOrders.symbol, symbol) : undefined
-          )
-        );
+      // Get all open orders from database (if available)
+      let openOrders: any[] = [];
+      if (db) {
+        try {
+          openOrders = await db
+            .select()
+            .from(hyperliquidOrders)
+            .where(
+              and(
+                eq(hyperliquidOrders.userId, userId),
+                eq(hyperliquidOrders.status, 'open'),
+                symbol ? eq(hyperliquidOrders.symbol, symbol) : undefined
+              )
+            );
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available for cancel all');
+          return {
+            success: false,
+            error: 'Database not available - cannot retrieve orders to cancel',
+          };
+        }
+      } else {
+        return {
+          success: false,
+          error: 'Database not configured - cannot retrieve orders to cancel',
+        };
+      }
 
       // Cancel each order
       const results = await Promise.allSettled(
@@ -223,6 +249,11 @@ export class OrderExecutionService {
    * Get user's open orders
    */
   public async getOpenOrders(userId: string, symbol?: string): Promise<any[]> {
+    if (!db) {
+      console.warn('[OrderExecutionService] Database not available for getOpenOrders');
+      return [];
+    }
+
     try {
       const openOrders = await db
         .select()
@@ -239,7 +270,7 @@ export class OrderExecutionService {
       return openOrders;
     } catch (error) {
       console.error('[OrderExecutionService] Failed to get open orders:', error);
-      throw error;
+      return [];
     }
   }
 
@@ -251,6 +282,11 @@ export class OrderExecutionService {
     symbol?: string,
     limit: number = 100
   ): Promise<any[]> {
+    if (!db) {
+      console.warn('[OrderExecutionService] Database not available for getOrderHistory');
+      return [];
+    }
+
     try {
       const orders = await db
         .select()
@@ -267,7 +303,7 @@ export class OrderExecutionService {
       return orders;
     } catch (error) {
       console.error('[OrderExecutionService] Failed to get order history:', error);
-      throw error;
+      return [];
     }
   }
 
@@ -280,43 +316,49 @@ export class OrderExecutionService {
       const userState = await this.hlClient.getClearinghouseState(userId);
 
       if (userState.assetPositions && userState.assetPositions.length > 0) {
-        // Update database with latest positions
-        for (const position of userState.assetPositions) {
-          const coin = position.position.coin;
+        // Update database with latest positions (if available)
+        if (db) {
+          try {
+            for (const position of userState.assetPositions) {
+              const coin = position.position.coin;
 
-          // Skip if symbol filter is set and doesn't match
-          if (symbol && coin !== symbol) continue;
+              // Skip if symbol filter is set and doesn't match
+              if (symbol && coin !== symbol) continue;
 
-          await db
-            .insert(hyperliquidPositions)
-            .values({
-              userId,
-              symbol: coin,
-              side: parseFloat(position.position.szi) > 0 ? 'long' : 'short',
-              quantity: Math.abs(parseFloat(position.position.szi)).toString(),
-              entryPrice: position.position.entryPx || '0',
-              markPrice: position.position.positionValue || '0',
-              liquidationPrice: position.position.liquidationPx || null,
-              leverage: position.position.leverage?.value?.toString() || null,
-              unrealizedPnl: position.position.unrealizedPnl || '0',
-              margin: position.position.marginUsed || '0',
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: [hyperliquidPositions.userId, hyperliquidPositions.symbol],
-              set: {
-                side: parseFloat(position.position.szi) > 0 ? 'long' : 'short',
-                quantity: Math.abs(parseFloat(position.position.szi)).toString(),
-                entryPrice: position.position.entryPx || '0',
-                markPrice: position.position.positionValue || '0',
-                liquidationPrice: position.position.liquidationPx || null,
-                leverage: position.position.leverage?.value?.toString() || null,
-                unrealizedPnl: position.position.unrealizedPnl || '0',
-                margin: position.position.marginUsed || '0',
-                updatedAt: new Date(),
-              },
-            });
+              await db
+                .insert(hyperliquidPositions)
+                .values({
+                  userId,
+                  symbol: coin,
+                  side: parseFloat(position.position.szi) > 0 ? 'long' : 'short',
+                  quantity: Math.abs(parseFloat(position.position.szi)).toString(),
+                  entryPrice: position.position.entryPx || '0',
+                  markPrice: position.position.positionValue || '0',
+                  liquidationPrice: position.position.liquidationPx || null,
+                  leverage: position.position.leverage?.value?.toString() || null,
+                  unrealizedPnl: position.position.unrealizedPnl || '0',
+                  margin: position.position.marginUsed || '0',
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .onConflictDoUpdate({
+                  target: [hyperliquidPositions.userId, hyperliquidPositions.symbol],
+                  set: {
+                    side: parseFloat(position.position.szi) > 0 ? 'long' : 'short',
+                    quantity: Math.abs(parseFloat(position.position.szi)).toString(),
+                    entryPrice: position.position.entryPx || '0',
+                    markPrice: position.position.positionValue || '0',
+                    liquidationPrice: position.position.liquidationPx || null,
+                    leverage: position.position.leverage?.value?.toString() || null,
+                    unrealizedPnl: position.position.unrealizedPnl || '0',
+                    margin: position.position.marginUsed || '0',
+                    updatedAt: new Date(),
+                  },
+                });
+            }
+          } catch (dbError) {
+            console.warn('[OrderExecutionService] Database not available for position updates');
+          }
         }
 
         // Return filtered positions
@@ -335,19 +377,27 @@ export class OrderExecutionService {
           }));
       }
 
-      // Fallback to database if API fails
-      const positions = await db
-        .select()
-        .from(hyperliquidPositions)
-        .where(
-          and(
-            eq(hyperliquidPositions.userId, userId),
-            symbol ? eq(hyperliquidPositions.symbol, symbol) : undefined
-          )
-        )
-        .orderBy(desc(hyperliquidPositions.updatedAt));
+      // Fallback to database if API fails (if database available)
+      if (db) {
+        try {
+          const positions = await db
+            .select()
+            .from(hyperliquidPositions)
+            .where(
+              and(
+                eq(hyperliquidPositions.userId, userId),
+                symbol ? eq(hyperliquidPositions.symbol, symbol) : undefined
+              )
+            )
+            .orderBy(desc(hyperliquidPositions.updatedAt));
 
-      return positions;
+          return positions;
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available for positions fallback');
+        }
+      }
+
+      return [];
     } catch (error) {
       console.error('[OrderExecutionService] Failed to get positions:', error);
       throw error;
@@ -374,6 +424,11 @@ export class OrderExecutionService {
    * Handle individual fill
    */
   private async handleFill(userId: string, fill: any): Promise<void> {
+    if (!db) {
+      console.warn('[OrderExecutionService] Database not available, skipping fill persistence');
+      return;
+    }
+
     try {
       // Store fill in database
       await db.insert(hyperliquidFills).values({
@@ -422,7 +477,7 @@ export class OrderExecutionService {
       }
     } catch (error) {
       console.error('[OrderExecutionService] Failed to handle fill:', error);
-      throw error;
+      // Don't throw - this is a background operation
     }
   }
 

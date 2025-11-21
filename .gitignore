@@ -12,4 +12,36 @@ CLAUDE.md
 /.env.example
 .github
 
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
 
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
