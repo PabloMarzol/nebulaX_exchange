@@ -1,604 +1,292 @@
-import { getHyperliquidClient } from './HyperliquidClient';
-import { HYPERLIQUID_CONSTANTS, type OrderSide, type OrderType, type TimeInForce } from './config';
-import { v4 as uuidv4 } from 'uuid';
-import { db } from '../../lib/db';
-import { hyperliquidOrders, type NewHyperliquidOrder, type HyperliquidOrder } from '../../../../shared/schema/hyperliquid.schema';
+import { HyperliquidClient } from './HyperliquidClient';
+import { db } from '../../db/index.js';
+import { hyperliquidOrders, hyperliquidFills, hyperliquidPositions } from '../../db/schema/hyperliquid.js';
 import { eq, and, desc } from 'drizzle-orm';
+import type { WsUserEvent } from '@nktkas/hyperliquid';
 
-/**
- * Order placement parameters
- */
 export interface PlaceOrderParams {
   userId: string;
-  userAddress: string;
   symbol: string;
-  side: OrderSide;
-  orderType: OrderType;
+  side: 'buy' | 'sell';
+  type: 'limit' | 'market';
   price?: number;
-  size: number;
-  timeInForce?: TimeInForce;
+  quantity: number;
+  leverage?: number;
+  timeInForce?: 'Gtc' | 'Ioc' | 'Alo';
   reduceOnly?: boolean;
   postOnly?: boolean;
-  clientOrderId?: string;
 }
 
-/**
- * Order validation error
- */
-export class OrderValidationError extends Error {
-  constructor(message: string, public code: string) {
-    super(message);
-    this.name = 'OrderValidationError';
-  }
-}
-
-/**
- * Order placement result
- */
-export interface OrderPlacementResult {
-  success: boolean;
-  internalOrderId: string;
-  hyperliquidOrderId?: string;
-  status: string;
-  message?: string;
-  error?: string;
-}
-
-/**
- * Cancel order parameters
- */
 export interface CancelOrderParams {
   userId: string;
-  userAddress: string;
   orderId: string;
   symbol: string;
 }
 
 /**
- * OrderExecutionService
- *
- * Handles order placement, validation, and execution on Hyperliquid.
- *
- * Features:
- * - Pre-flight validation (balance, size, limits)
- * - Database persistence before submission
- * - Hyperliquid API integration
- * - Error handling and rollback
- * - Order status tracking
+ * OrderExecutionService handles order placement, cancellation, and tracking
+ * with proper database persistence and error handling.
  */
 export class OrderExecutionService {
-  private client = getHyperliquidClient();
+  private static instance: OrderExecutionService | null = null;
+  private hlClient: HyperliquidClient;
+
+  private constructor() {
+    this.hlClient = HyperliquidClient.getInstance();
+  }
 
   /**
-   * Place an order on Hyperliquid
+   * Get singleton instance of OrderExecutionService
    */
-  async placeOrder(params: PlaceOrderParams): Promise<OrderPlacementResult> {
-    const internalOrderId = params.clientOrderId || uuidv4();
+  public static getInstance(): OrderExecutionService {
+    if (!OrderExecutionService.instance) {
+      OrderExecutionService.instance = new OrderExecutionService();
+    }
+    return OrderExecutionService.instance;
+  }
+
+  /**
+   * Place a new order
+   */
+  public async placeOrder(params: PlaceOrderParams): Promise<any> {
+    const {
+      userId,
+      symbol,
+      side,
+      type,
+      price,
+      quantity,
+      leverage,
+      timeInForce,
+      reduceOnly,
+      postOnly,
+    } = params;
 
     try {
-      // 1. Validate order parameters
-      await this.validateOrder(params);
+      // Validate parameters
+      if (type === 'limit' && !price) {
+        throw new Error('Price is required for limit orders');
+      }
 
-      // 2. Check user balance and margin
-      await this.validateBalance(params);
+      if (quantity <= 0) {
+        throw new Error('Quantity must be greater than 0');
+      }
 
-      // 3. Save order to database with 'pending' status
-      const dbOrder = await this.saveOrderToDatabase({
-        ...params,
-        internalOrderId,
-        status: 'pending',
-      });
+      // Prepare order parameters
+      const orderParams: any = {
+        coin: symbol,
+        is_buy: side === 'buy',
+        sz: quantity,
+        limit_px: type === 'limit' ? price : undefined,
+        order_type: this.mapOrderType(type, timeInForce),
+        reduce_only: reduceOnly || false,
+      };
 
-      // 4. Submit order to Hyperliquid
-      const hyperliquidResponse = await this.submitToHyperliquid(params);
+      console.log('[OrderExecutionService] Placing order:', orderParams);
 
-      // 5. Parse response and update database
-      if (hyperliquidResponse.status === 'ok') {
-        const orderStatus = hyperliquidResponse.response?.data?.statuses?.[0];
+      // Place order on Hyperliquid
+      const result = await this.hlClient.placeOrder(orderParams);
 
-        if (!orderStatus) {
-          throw new Error('Invalid response from Hyperliquid: missing order status');
-        }
+      if (result.status === 'err') {
+        throw new Error(`Order placement failed: ${result.response}`);
+      }
 
-        // Check if order was rejected
-        if (orderStatus.error) {
-          // Update order status to 'failed'
-          await this.updateOrderStatus(internalOrderId, 'failed', {
-            errorMessage: orderStatus.error,
+      // Store order in database (if available)
+      const orderData = result.response.data?.statuses?.[0];
+      if (orderData && db) {
+        try {
+          await db.insert(hyperliquidOrders).values({
+            userId,
+            symbol,
+            orderId: orderData.resting?.oid?.toString() || `temp-${Date.now()}`,
+            clientOrderId: null,
+            side,
+            type,
+            price: price?.toString() || null,
+            quantity: quantity.toString(),
+            filledQuantity: '0',
+            remainingQuantity: quantity.toString(),
+            status: 'open',
+            timeInForce: timeInForce || 'Gtc',
+            reduceOnly: reduceOnly || false,
+            postOnly: postOnly || false,
+            leverage: leverage?.toString() || null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
           });
-
-          return {
-            success: false,
-            internalOrderId,
-            status: 'failed',
-            error: orderStatus.error,
-            message: `Order rejected: ${orderStatus.error}`,
-          };
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available, skipping order persistence');
         }
-
-        // Update order status to 'open' with Hyperliquid order ID
-        await this.updateOrderStatus(internalOrderId, 'open', {
-          hyperliquidOrderId: orderStatus.oid,
-        });
-
-        return {
-          success: true,
-          internalOrderId,
-          hyperliquidOrderId: orderStatus.oid,
-          status: 'open',
-          message: 'Order placed successfully',
-        };
-      } else {
-        // Handle error response
-        const errorMessage = hyperliquidResponse.response?.toString() || 'Unknown error';
-
-        // Update order status to 'failed'
-        await this.updateOrderStatus(internalOrderId, 'failed', {
-          errorMessage,
-        });
-
-        return {
-          success: false,
-          internalOrderId,
-          status: 'failed',
-          error: errorMessage,
-          message: `Order failed: ${errorMessage}`,
-        };
       }
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Order placement failed:', error);
 
-      // Try to update database status if possible
-      try {
-        await this.updateOrderStatus(internalOrderId, 'failed', {
-          errorMessage: error.message,
-        });
-      } catch (dbError) {
-        console.error('[OrderExecutionService] Failed to update order status in DB:', dbError);
-      }
+      console.log('[OrderExecutionService] Order placed successfully:', result);
 
       return {
-        success: false,
-        internalOrderId,
-        status: 'failed',
-        error: error.message,
-        message: error instanceof OrderValidationError
-          ? error.message
-          : 'Order placement failed',
+        success: true,
+        data: result.response,
       };
-    }
-  }
-
-  /**
-   * Cancel an order
-   */
-  async cancelOrder(params: CancelOrderParams): Promise<{ success: boolean; message?: string; error?: string }> {
-    try {
-      // Get order from database to get Hyperliquid order ID
-      const order = await this.getOrderByInternalId(params.orderId);
-
-      if (!order) {
-        return {
-          success: false,
-          error: 'Order not found',
-        };
-      }
-
-      if (!order.hyperliquidOrderId) {
-        return {
-          success: false,
-          error: 'Order has no Hyperliquid order ID (may not be submitted yet)',
-        };
-      }
-
-      if (order.status !== 'open') {
-        return {
-          success: false,
-          error: `Order cannot be cancelled (current status: ${order.status})`,
-        };
-      }
-
-      // Cancel on Hyperliquid
-      const response = await this.client.cancelOrder(order.hyperliquidOrderId, params.symbol);
-
-      if (response.status === 'ok') {
-        // Update database status
-        await this.updateOrderStatus(params.orderId, 'cancelled');
-
-        return {
-          success: true,
-          message: 'Order cancelled successfully',
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Failed to cancel order on Hyperliquid',
-        };
-      }
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Order cancellation failed:', error);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * Cancel all orders for a symbol
-   */
-  async cancelAllOrders(params: {
-    userId: string;
-    userAddress: string;
-    symbol: string;
-  }): Promise<{ success: boolean; cancelledCount?: number; message?: string; error?: string }> {
-    try {
-      // Get all open orders for this user and symbol
-      const openOrders = await this.getUserOpenOrders(params.userId);
-      const ordersToCancel = openOrders.filter(order => order.symbol === params.symbol);
-
-      if (ordersToCancel.length === 0) {
-        return {
-          success: true,
-          cancelledCount: 0,
-          message: `No open orders to cancel for ${params.symbol}`,
-        };
-      }
-
-      // Cancel on Hyperliquid
-      const response = await this.client.cancelAllOrders(params.symbol);
-
-      if (response.status === 'ok') {
-        // Update all orders in database to cancelled
-        await Promise.all(
-          ordersToCancel.map(order =>
-            this.updateOrderStatus(order.internalOrderId, 'cancelled')
-          )
-        );
-
-        return {
-          success: true,
-          cancelledCount: ordersToCancel.length,
-          message: `All orders cancelled for ${params.symbol}`,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Failed to cancel orders on Hyperliquid',
-        };
-      }
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Cancel all orders failed:', error);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * Validate order parameters
-   */
-  private async validateOrder(params: PlaceOrderParams): Promise<void> {
-    // Validate symbol
-    if (!params.symbol || typeof params.symbol !== 'string' || params.symbol.length === 0) {
-      throw new OrderValidationError('Invalid symbol', 'INVALID_SYMBOL');
-    }
-
-    // Validate side
-    if (!params.side || !['buy', 'sell'].includes(params.side)) {
-      throw new OrderValidationError('Invalid order side. Must be "buy" or "sell"', 'INVALID_SIDE');
-    }
-
-    // Validate order type
-    if (!params.orderType || !['limit', 'market'].includes(params.orderType)) {
-      throw new OrderValidationError('Invalid order type. Must be "limit" or "market"', 'INVALID_ORDER_TYPE');
-    }
-
-    // Validate size
-    if (!params.size || params.size <= 0) {
-      throw new OrderValidationError('Order size must be positive', 'INVALID_SIZE');
-    }
-
-    // Validate price for limit orders
-    if (params.orderType === 'limit') {
-      if (!params.price || params.price <= 0) {
-        throw new OrderValidationError('Limit orders must have a positive price', 'INVALID_PRICE');
-      }
-    }
-
-    // Validate timeInForce
-    if (params.timeInForce && !['Gtc', 'Ioc', 'Alo'].includes(params.timeInForce)) {
-      throw new OrderValidationError('Invalid timeInForce. Must be "Gtc", "Ioc", or "Alo"', 'INVALID_TIF');
-    }
-
-    // Validate user address format
-    if (!params.userAddress || !params.userAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      throw new OrderValidationError('Invalid user address', 'INVALID_ADDRESS');
-    }
-
-    // Check for minimum order sizes (these would come from Hyperliquid API in production)
-    const minSizes: Record<string, number> = {
-      'BTC': 0.001,
-      'ETH': 0.01,
-      'SOL': 0.1,
-      // Add more symbols as needed
-    };
-
-    const minSize = minSizes[params.symbol];
-    if (minSize && params.size < minSize) {
-      throw new OrderValidationError(
-        `Minimum order size for ${params.symbol} is ${minSize}`,
-        'SIZE_TOO_SMALL'
-      );
-    }
-  }
-
-  /**
-   * Validate user has sufficient balance
-   */
-  private async validateBalance(params: PlaceOrderParams): Promise<void> {
-    try {
-      // Get user state from Hyperliquid
-      const userState = await this.client.getUserState(params.userAddress);
-
-      // Extract account value and margin used
-      const accountValue = parseFloat(userState.marginSummary.accountValue);
-      const marginUsed = parseFloat(userState.marginSummary.totalMarginUsed);
-      const availableMargin = accountValue - marginUsed;
-
-      // Estimate margin required for this order
-      // For perpetuals, margin requirement depends on leverage
-      // This is a simplified calculation - actual margin calculation is more complex
-      const orderValue = params.orderType === 'limit'
-        ? (params.price || 0) * params.size
-        : 0; // For market orders, we'd need current price
-
-      // Assume 10x leverage (10% margin requirement)
-      const estimatedMarginRequired = orderValue * 0.1;
-
-      // Check if user has sufficient margin
-      if (estimatedMarginRequired > availableMargin) {
-        throw new OrderValidationError(
-          `Insufficient margin. Available: $${availableMargin.toFixed(2)}, Required: $${estimatedMarginRequired.toFixed(2)}`,
-          'INSUFFICIENT_MARGIN'
-        );
-      }
-
-      // Check for reduce-only orders
-      if (params.reduceOnly) {
-        // Verify user has an opposite position to reduce
-        const positions = userState.assetPositions;
-        const position = positions.find((p: any) => p.position.coin === params.symbol);
-
-        if (!position) {
-          throw new OrderValidationError(
-            'No position to reduce',
-            'NO_POSITION'
-          );
-        }
-
-        const positionSize = parseFloat(position.position.szi);
-        const isLong = positionSize > 0;
-        const isShort = positionSize < 0;
-
-        // Reduce-only buy order should reduce a short position
-        // Reduce-only sell order should reduce a long position
-        if (params.side === 'buy' && !isShort) {
-          throw new OrderValidationError(
-            'Reduce-only buy order requires a short position',
-            'INVALID_REDUCE_ONLY'
-          );
-        }
-
-        if (params.side === 'sell' && !isLong) {
-          throw new OrderValidationError(
-            'Reduce-only sell order requires a long position',
-            'INVALID_REDUCE_ONLY'
-          );
-        }
-
-        // Check size doesn't exceed position size
-        if (params.size > Math.abs(positionSize)) {
-          throw new OrderValidationError(
-            `Order size (${params.size}) exceeds position size (${Math.abs(positionSize)})`,
-            'SIZE_EXCEEDS_POSITION'
-          );
-        }
-      }
-    } catch (error: any) {
-      if (error instanceof OrderValidationError) {
-        throw error;
-      }
-
-      // If we can't get user state, log warning but don't block order
-      // (Hyperliquid will do its own validation)
-      console.warn('[OrderExecutionService] Could not validate balance:', error.message);
-    }
-  }
-
-  /**
-   * Submit order to Hyperliquid
-   */
-  private async submitToHyperliquid(params: PlaceOrderParams): Promise<any> {
-    const orderRequest = {
-      coin: params.symbol,
-      isBuy: params.side === 'buy',
-      price: params.price || 0, // Market orders use 0
-      size: params.size,
-      orderType: params.orderType,
-      timeInForce: params.timeInForce,
-      reduceOnly: params.reduceOnly,
-    };
-
-    console.log('[OrderExecutionService] Submitting order to Hyperliquid:', {
-      symbol: params.symbol,
-      side: params.side,
-      type: params.orderType,
-      price: params.price,
-      size: params.size,
-    });
-
-    return await this.client.placeOrder(orderRequest);
-  }
-
-  /**
-   * Get order size limits for a symbol
-   */
-  async getOrderLimits(symbol: string): Promise<{
-    minSize: number;
-    maxSize: number;
-    sizeIncrement: number;
-    priceIncrement: number;
-  }> {
-    try {
-      // Get symbol metadata from Hyperliquid
-      const metas = await this.client.getAllMetas();
-      const symbolMeta = metas.universe.find((m: any) => m.name === symbol);
-
-      if (!symbolMeta) {
-        throw new Error(`Symbol ${symbol} not found`);
-      }
-
-      // Return limits based on symbol metadata
-      return {
-        minSize: 0.001, // This would come from symbolMeta
-        maxSize: 1000000, // This would come from symbolMeta
-        sizeIncrement: Math.pow(10, -symbolMeta.szDecimals),
-        priceIncrement: 0.01, // This would come from symbolMeta
-      };
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Failed to get order limits:', error);
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to place order:', error);
       throw error;
     }
   }
 
   /**
-   * Save order to database
+   * Cancel an existing order
    */
-  private async saveOrderToDatabase(params: PlaceOrderParams & { internalOrderId: string; status: string }): Promise<HyperliquidOrder> {
-    const newOrder: NewHyperliquidOrder = {
-      userId: params.userId,
-      internalOrderId: params.internalOrderId,
-      symbol: params.symbol,
-      side: params.side,
-      orderType: params.orderType,
-      price: params.price?.toString(),
-      size: params.size.toString(),
-      remainingSize: params.size.toString(),
-      timeInForce: params.timeInForce,
-      reduceOnly: params.reduceOnly,
-      postOnly: params.postOnly,
-      status: params.status,
-      filledSize: '0',
-    };
+  public async cancelOrder(params: CancelOrderParams): Promise<any> {
+    const { userId, orderId, symbol } = params;
 
     try {
-      const [order] = await db.insert(hyperliquidOrders).values(newOrder).returning();
-      console.log(`[OrderExecutionService] Order saved to database: ${params.internalOrderId}`);
-      return order;
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Failed to save order to database:', error);
-      throw new Error(`Database error: ${error.message}`);
-    }
-  }
+      console.log('[OrderExecutionService] Canceling order:', { orderId, symbol });
 
-  /**
-   * Update order status in database
-   */
-  private async updateOrderStatus(
-    internalOrderId: string,
-    status: string,
-    updates: {
-      hyperliquidOrderId?: string;
-      filledSize?: string;
-      remainingSize?: string;
-      averageFillPrice?: string;
-      errorMessage?: string;
-    } = {}
-  ): Promise<void> {
-    try {
-      const updateData: any = {
-        status,
-        updatedAt: new Date(),
+      // Cancel order on Hyperliquid
+      const result = await this.hlClient.cancelOrder({
+        coin: symbol,
+        o: parseInt(orderId),
+      });
+
+      if (result.status === 'err') {
+        throw new Error(`Order cancellation failed: ${result.response}`);
+      }
+
+      // Update order status in database (if available)
+      if (db) {
+        try {
+          await db
+            .update(hyperliquidOrders)
+            .set({
+              status: 'cancelled',
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(hyperliquidOrders.userId, userId),
+                eq(hyperliquidOrders.orderId, orderId)
+              )
+            );
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available, skipping status update');
+        }
+      }
+
+      console.log('[OrderExecutionService] Order cancelled successfully:', result);
+
+      return {
+        success: true,
+        data: result.response,
       };
-
-      if (updates.hyperliquidOrderId) {
-        updateData.hyperliquidOrderId = updates.hyperliquidOrderId;
-      }
-      if (updates.filledSize) {
-        updateData.filledSize = updates.filledSize;
-      }
-      if (updates.remainingSize) {
-        updateData.remainingSize = updates.remainingSize;
-      }
-      if (updates.averageFillPrice) {
-        updateData.averageFillPrice = updates.averageFillPrice;
-      }
-      if (updates.errorMessage) {
-        updateData.errorMessage = updates.errorMessage;
-      }
-
-      // Add filled/cancelled timestamps
-      if (status === 'filled') {
-        updateData.filledAt = new Date();
-      } else if (status === 'cancelled') {
-        updateData.cancelledAt = new Date();
-      }
-
-      await db
-        .update(hyperliquidOrders)
-        .set(updateData)
-        .where(eq(hyperliquidOrders.internalOrderId, internalOrderId));
-
-      console.log(`[OrderExecutionService] Order status updated: ${internalOrderId} -> ${status}`);
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Failed to update order status:', error);
-      throw new Error(`Database error: ${error.message}`);
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to cancel order:', error);
+      throw error;
     }
   }
 
   /**
-   * Get order by internal order ID
+   * Cancel all orders for a user
    */
-  async getOrderByInternalId(internalOrderId: string): Promise<HyperliquidOrder | null> {
+  public async cancelAllOrders(userId: string, symbol?: string): Promise<any> {
     try {
-      const [order] = await db
+      console.log('[OrderExecutionService] Canceling all orders for user:', userId);
+
+      // Get all open orders from database (if available)
+      let openOrders: any[] = [];
+      if (db) {
+        try {
+          openOrders = await db
+            .select()
+            .from(hyperliquidOrders)
+            .where(
+              and(
+                eq(hyperliquidOrders.userId, userId),
+                eq(hyperliquidOrders.status, 'open'),
+                symbol ? eq(hyperliquidOrders.symbol, symbol) : undefined
+              )
+            );
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available for cancel all');
+          return {
+            success: false,
+            error: 'Database not available - cannot retrieve orders to cancel',
+          };
+        }
+      } else {
+        return {
+          success: false,
+          error: 'Database not configured - cannot retrieve orders to cancel',
+        };
+      }
+
+      // Cancel each order
+      const results = await Promise.allSettled(
+        openOrders.map((order) =>
+          this.cancelOrder({
+            userId,
+            orderId: order.orderId,
+            symbol: order.symbol,
+          })
+        )
+      );
+
+      const successCount = results.filter((r) => r.status === 'fulfilled').length;
+      const failedCount = results.filter((r) => r.status === 'rejected').length;
+
+      return {
+        success: true,
+        data: {
+          total: openOrders.length,
+          cancelled: successCount,
+          failed: failedCount,
+        },
+      };
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to cancel all orders:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's open orders
+   */
+  public async getOpenOrders(userId: string, symbol?: string): Promise<any[]> {
+    if (!db) {
+      console.warn('[OrderExecutionService] Database not available for getOpenOrders');
+      return [];
+    }
+
+    try {
+      const openOrders = await db
         .select()
         .from(hyperliquidOrders)
-        .where(eq(hyperliquidOrders.internalOrderId, internalOrderId))
-        .limit(1);
+        .where(
+          and(
+            eq(hyperliquidOrders.userId, userId),
+            eq(hyperliquidOrders.status, 'open'),
+            symbol ? eq(hyperliquidOrders.symbol, symbol) : undefined
+          )
+        )
+        .orderBy(desc(hyperliquidOrders.createdAt));
 
-      return order || null;
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Failed to get order:', error);
-      throw new Error(`Database error: ${error.message}`);
+      return openOrders;
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to get open orders:', error);
+      return [];
     }
   }
 
   /**
-   * Get orders for a user
+   * Get user's order history
    */
-  async getUserOrders(userId: string, limit: number = 100): Promise<HyperliquidOrder[]> {
-    try {
-      const orders = await db
-        .select()
-        .from(hyperliquidOrders)
-        .where(eq(hyperliquidOrders.userId, userId))
-        .orderBy(desc(hyperliquidOrders.createdAt))
-        .limit(limit);
-
-      return orders;
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Failed to get user orders:', error);
-      throw new Error(`Database error: ${error.message}`);
+  public async getOrderHistory(
+    userId: string,
+    symbol?: string,
+    limit: number = 100
+  ): Promise<any[]> {
+    if (!db) {
+      console.warn('[OrderExecutionService] Database not available for getOrderHistory');
+      return [];
     }
-  }
 
-  /**
-   * Get open orders for a user
-   */
-  async getUserOpenOrders(userId: string): Promise<HyperliquidOrder[]> {
     try {
       const orders = await db
         .select()
@@ -606,65 +294,214 @@ export class OrderExecutionService {
         .where(
           and(
             eq(hyperliquidOrders.userId, userId),
-            eq(hyperliquidOrders.status, 'open')
+            symbol ? eq(hyperliquidOrders.symbol, symbol) : undefined
           )
         )
-        .orderBy(desc(hyperliquidOrders.createdAt));
+        .orderBy(desc(hyperliquidOrders.createdAt))
+        .limit(limit);
 
       return orders;
-    } catch (error: any) {
-      console.error('[OrderExecutionService] Failed to get user open orders:', error);
-      throw new Error(`Database error: ${error.message}`);
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to get order history:', error);
+      return [];
     }
   }
 
   /**
-   * Estimate order fees
+   * Get user's positions
    */
-  estimateFees(params: {
-    symbol: string;
-    size: number;
-    price: number;
-    isMaker: boolean;
-  }): {
-    feeRate: number;
-    estimatedFee: number;
-  } {
-    // Hyperliquid fee structure (simplified)
-    const makerFeeRate = 0.00025; // 0.025%
-    const takerFeeRate = 0.00035; // 0.035%
+  public async getPositions(userId: string, symbol?: string): Promise<any[]> {
+    try {
+      // First, try to get from Hyperliquid API
+      const userState = await this.hlClient.getClearinghouseState(userId);
 
-    const feeRate = params.isMaker ? makerFeeRate : takerFeeRate;
-    const orderValue = params.price * params.size;
-    const estimatedFee = orderValue * feeRate;
+      if (userState.assetPositions && userState.assetPositions.length > 0) {
+        // Update database with latest positions (if available)
+        if (db) {
+          try {
+            for (const position of userState.assetPositions) {
+              const coin = position.position.coin;
 
-    return {
-      feeRate,
-      estimatedFee,
-    };
+              // Skip if symbol filter is set and doesn't match
+              if (symbol && coin !== symbol) continue;
+
+              await db
+                .insert(hyperliquidPositions)
+                .values({
+                  userId,
+                  symbol: coin,
+                  side: parseFloat(position.position.szi) > 0 ? 'long' : 'short',
+                  quantity: Math.abs(parseFloat(position.position.szi)).toString(),
+                  entryPrice: position.position.entryPx || '0',
+                  markPrice: position.position.positionValue || '0',
+                  liquidationPrice: position.position.liquidationPx || null,
+                  leverage: position.position.leverage?.value?.toString() || null,
+                  unrealizedPnl: position.position.unrealizedPnl || '0',
+                  margin: position.position.marginUsed || '0',
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .onConflictDoUpdate({
+                  target: [hyperliquidPositions.userId, hyperliquidPositions.symbol],
+                  set: {
+                    side: parseFloat(position.position.szi) > 0 ? 'long' : 'short',
+                    quantity: Math.abs(parseFloat(position.position.szi)).toString(),
+                    entryPrice: position.position.entryPx || '0',
+                    markPrice: position.position.positionValue || '0',
+                    liquidationPrice: position.position.liquidationPx || null,
+                    leverage: position.position.leverage?.value?.toString() || null,
+                    unrealizedPnl: position.position.unrealizedPnl || '0',
+                    margin: position.position.marginUsed || '0',
+                    updatedAt: new Date(),
+                  },
+                });
+            }
+          } catch (dbError) {
+            console.warn('[OrderExecutionService] Database not available for position updates');
+          }
+        }
+
+        // Return filtered positions
+        return userState.assetPositions
+          .filter((p) => !symbol || p.position.coin === symbol)
+          .map((p) => ({
+            symbol: p.position.coin,
+            side: parseFloat(p.position.szi) > 0 ? 'long' : 'short',
+            quantity: Math.abs(parseFloat(p.position.szi)),
+            entryPrice: p.position.entryPx,
+            markPrice: p.position.positionValue,
+            liquidationPrice: p.position.liquidationPx,
+            leverage: p.position.leverage?.value,
+            unrealizedPnl: p.position.unrealizedPnl,
+            margin: p.position.marginUsed,
+          }));
+      }
+
+      // Fallback to database if API fails (if database available)
+      if (db) {
+        try {
+          const positions = await db
+            .select()
+            .from(hyperliquidPositions)
+            .where(
+              and(
+                eq(hyperliquidPositions.userId, userId),
+                symbol ? eq(hyperliquidPositions.symbol, symbol) : undefined
+              )
+            )
+            .orderBy(desc(hyperliquidPositions.updatedAt));
+
+          return positions;
+        } catch (dbError) {
+          console.warn('[OrderExecutionService] Database not available for positions fallback');
+        }
+      }
+
+      return [];
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to get positions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle user event from WebSocket (fills, order updates, etc.)
+   */
+  public async handleUserEvent(userId: string, event: WsUserEvent): Promise<void> {
+    try {
+      if (event.channel === 'user' && event.data.fills) {
+        // Handle fills
+        for (const fill of event.data.fills) {
+          await this.handleFill(userId, fill);
+        }
+      }
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to handle user event:', error);
+    }
+  }
+
+  /**
+   * Handle individual fill
+   */
+  private async handleFill(userId: string, fill: any): Promise<void> {
+    if (!db) {
+      console.warn('[OrderExecutionService] Database not available, skipping fill persistence');
+      return;
+    }
+
+    try {
+      // Store fill in database
+      await db.insert(hyperliquidFills).values({
+        userId,
+        orderId: fill.oid?.toString() || null,
+        symbol: fill.coin,
+        side: fill.side === 'B' ? 'buy' : 'sell',
+        price: fill.px,
+        quantity: fill.sz,
+        fee: fill.fee,
+        feeToken: fill.feeToken || 'USDC',
+        liquidation: fill.liquidation || false,
+        timestamp: new Date(fill.time),
+        createdAt: new Date(),
+      });
+
+      // Update order status
+      if (fill.oid) {
+        const order = await db
+          .select()
+          .from(hyperliquidOrders)
+          .where(
+            and(
+              eq(hyperliquidOrders.userId, userId),
+              eq(hyperliquidOrders.orderId, fill.oid.toString())
+            )
+          )
+          .limit(1);
+
+        if (order.length > 0) {
+          const currentFilled = parseFloat(order[0].filledQuantity);
+          const fillSize = parseFloat(fill.sz);
+          const newFilled = currentFilled + fillSize;
+          const totalSize = parseFloat(order[0].quantity);
+
+          await db
+            .update(hyperliquidOrders)
+            .set({
+              filledQuantity: newFilled.toString(),
+              remainingQuantity: (totalSize - newFilled).toString(),
+              status: newFilled >= totalSize ? 'filled' : 'partially_filled',
+              updatedAt: new Date(),
+            })
+            .where(eq(hyperliquidOrders.id, order[0].id));
+        }
+      }
+    } catch (error) {
+      console.error('[OrderExecutionService] Failed to handle fill:', error);
+      // Don't throw - this is a background operation
+    }
+  }
+
+  /**
+   * Map frontend order type to Hyperliquid order type
+   */
+  private mapOrderType(
+    type: 'limit' | 'market',
+    timeInForce?: 'Gtc' | 'Ioc' | 'Alo'
+  ): any {
+    if (type === 'market') {
+      return { market: {} };
+    }
+
+    if (timeInForce === 'Ioc') {
+      return { limit: { tif: 'Ioc' } };
+    }
+
+    if (timeInForce === 'Alo') {
+      return { limit: { tif: 'Alo' } };
+    }
+
+    return { limit: { tif: 'Gtc' } };
   }
 }
 
-/**
- * Singleton instance
- */
-let orderExecutionServiceInstance: OrderExecutionService | null = null;
-
-/**
- * Get the singleton instance of OrderExecutionService
- */
-export function getOrderExecutionService(): OrderExecutionService {
-  if (!orderExecutionServiceInstance) {
-    orderExecutionServiceInstance = new OrderExecutionService();
-    console.log('[OrderExecutionService] Instance created');
-  }
-
-  return orderExecutionServiceInstance;
-}
-
-/**
- * Reset the singleton instance (useful for testing)
- */
-export function resetOrderExecutionService(): void {
-  orderExecutionServiceInstance = null;
-}
+export default OrderExecutionService;

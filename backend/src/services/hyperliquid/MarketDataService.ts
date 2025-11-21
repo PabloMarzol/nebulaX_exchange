@@ -1,233 +1,218 @@
-import { EventEmitter } from 'events';
-import { getHyperliquidClient } from './HyperliquidClient';
-import { HYPERLIQUID_CONSTANTS } from './config';
+import { HyperliquidClient } from './HyperliquidClient';
+import { WsUserEvent } from '@nktkas/hyperliquid';
+import { Server as SocketIOServer } from 'socket.io';
+import { CANDLE_INTERVALS } from './config';
 
-/**
- * Subscription types supported by MarketDataService
- */
-export type SubscriptionType =
-  | 'orderbook'
-  | 'trades'
-  | 'candles'
-  | 'allMids'
-  | 'userEvents';
-
-/**
- * Subscription metadata
- */
 interface Subscription {
-  type: SubscriptionType;
+  type: 'orderbook' | 'trades' | 'candles' | 'allMids';
   symbol?: string;
   interval?: string;
-  userAddress?: string;
-  unsubscribe: () => Promise<void>;
-  subscriberCount: number;
-  lastUpdate: Date;
+}
+
+interface MarketDataCache {
+  orderbooks: Map<string, any>;
+  trades: Map<string, any[]>;
+  candles: Map<string, Map<string, any[]>>;
+  allMids: Map<string, string>;
 }
 
 /**
- * Orderbook update data
+ * MarketDataService manages Hyperliquid WebSocket subscriptions and relays
+ * real-time market data to connected Socket.io clients.
  */
-export interface OrderbookUpdate {
-  coin: string;
-  time: number;
-  levels: [[string, string][], [string, string][]]; // [bids, asks]
-}
+export class MarketDataService {
+  private static instance: MarketDataService | null = null;
+  private hlClient: HyperliquidClient;
+  private io: SocketIOServer | null = null;
+  private subscriptions: Set<string> = new Set();
+  private cache: MarketDataCache = {
+    orderbooks: new Map(),
+    trades: new Map(),
+    candles: new Map(),
+    allMids: new Map(),
+  };
 
-/**
- * Trade update data
- */
-export interface TradeUpdate {
-  coin: string;
-  side: string;
-  px: string;
-  sz: string;
-  time: number;
-}
-
-/**
- * Candle update data
- */
-export interface CandleUpdate {
-  coin: string;
-  interval: string;
-  time: number;
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  volume: string;
-}
-
-/**
- * MarketDataService
- *
- * Manages WebSocket subscriptions to Hyperliquid and provides
- * a unified interface for real-time market data.
- *
- * Features:
- * - Automatic subscription deduplication
- * - Reference counting (multiple subscribers to same data)
- * - Event-based architecture for easy integration
- * - Automatic cleanup of unused subscriptions
- * - Error handling and reconnection
- */
-export class MarketDataService extends EventEmitter {
-  private client = getHyperliquidClient();
-  private subscriptions = new Map<string, Subscription>();
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 10;
-  private reconnectDelay = 1000; // Base delay in ms
-  private isShuttingDown = false;
-
-  constructor() {
-    super();
-    this.setMaxListeners(100); // Support many subscribers
+  private constructor() {
+    this.hlClient = HyperliquidClient.getInstance();
   }
 
   /**
-   * Subscribe to orderbook updates for a symbol
-   * Multiple calls with the same symbol will reuse the same subscription
+   * Get singleton instance of MarketDataService
    */
-  async subscribeToOrderbook(symbol: string): Promise<void> {
-    const key = `orderbook:${symbol}`;
+  public static getInstance(): MarketDataService {
+    if (!MarketDataService.instance) {
+      MarketDataService.instance = new MarketDataService();
+    }
+    return MarketDataService.instance;
+  }
 
-    // Check if already subscribed
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.subscriberCount++;
-      console.log(`[MarketDataService] Reusing orderbook subscription for ${symbol} (subscribers: ${existing.subscriberCount})`);
+  /**
+   * Initialize the service with Socket.io server
+   */
+  public initialize(io: SocketIOServer): void {
+    this.io = io;
+    console.log('[MarketDataService] Initialized with Socket.io server');
+
+    // Subscribe to all mids by default for price ticker
+    this.subscribeToAllMids();
+  }
+
+  /**
+   * Subscribe to orderbook updates for a specific symbol
+   */
+  public async subscribeToOrderbook(symbol: string): Promise<void> {
+    const subKey = `orderbook:${symbol}`;
+    if (this.subscriptions.has(subKey)) {
+      console.log(`[MarketDataService] Already subscribed to orderbook for ${symbol}`);
       return;
     }
 
     try {
-      // Create new subscription
-      const unsubscribe = await this.client.subscribeToOrderbook(
-        symbol,
-        (data: OrderbookUpdate) => {
-          this.emit('orderbook', { symbol, data });
-          this.updateSubscriptionTimestamp(key);
-        }
-      );
+      // Subscribe to Hyperliquid WebSocket
+      await this.hlClient.subscribeToOrderbook(symbol, (data) => {
+        // Cache the orderbook data
+        this.cache.orderbooks.set(symbol, data);
 
-      // Store subscription
-      this.subscriptions.set(key, {
-        type: 'orderbook',
-        symbol,
-        unsubscribe,
-        subscriberCount: 1,
-        lastUpdate: new Date(),
+        // Relay to Socket.io clients
+        this.io?.to(`market:${symbol}`).emit('orderbook:update', {
+          symbol,
+          data,
+          timestamp: Date.now(),
+        });
       });
 
-      console.log(`[MarketDataService] Subscribed to orderbook: ${symbol}`);
+      this.subscriptions.add(subKey);
+      console.log(`[MarketDataService] Subscribed to orderbook for ${symbol}`);
+
+      // Fetch initial orderbook snapshot
+      const snapshot = await this.hlClient.getOrderbook(symbol);
+      this.cache.orderbooks.set(symbol, snapshot);
     } catch (error) {
-      console.error(`[MarketDataService] Failed to subscribe to orderbook ${symbol}:`, error);
+      console.error(`[MarketDataService] Failed to subscribe to orderbook for ${symbol}:`, error);
       throw error;
     }
   }
 
   /**
-   * Subscribe to trades stream for a symbol
+   * Subscribe to trade updates for a specific symbol
    */
-  async subscribeToTrades(symbol: string): Promise<void> {
-    const key = `trades:${symbol}`;
-
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.subscriberCount++;
-      console.log(`[MarketDataService] Reusing trades subscription for ${symbol} (subscribers: ${existing.subscriberCount})`);
+  public async subscribeToTrades(symbol: string): Promise<void> {
+    const subKey = `trades:${symbol}`;
+    if (this.subscriptions.has(subKey)) {
+      console.log(`[MarketDataService] Already subscribed to trades for ${symbol}`);
       return;
     }
 
     try {
-      const unsubscribe = await this.client.subscribeToTrades(
-        symbol,
-        (data: TradeUpdate[]) => {
-          this.emit('trades', { symbol, data });
-          this.updateSubscriptionTimestamp(key);
-        }
-      );
+      // Subscribe to Hyperliquid WebSocket
+      await this.hlClient.subscribeToTrades(symbol, (data) => {
+        // Cache the latest trades (keep last 100)
+        const trades = this.cache.trades.get(symbol) || [];
+        trades.unshift(data);
+        if (trades.length > 100) trades.pop();
+        this.cache.trades.set(symbol, trades);
 
-      this.subscriptions.set(key, {
-        type: 'trades',
-        symbol,
-        unsubscribe,
-        subscriberCount: 1,
-        lastUpdate: new Date(),
+        // Relay to Socket.io clients
+        this.io?.to(`market:${symbol}`).emit('trades:update', {
+          symbol,
+          data,
+          timestamp: Date.now(),
+        });
       });
 
-      console.log(`[MarketDataService] Subscribed to trades: ${symbol}`);
+      this.subscriptions.add(subKey);
+      console.log(`[MarketDataService] Subscribed to trades for ${symbol}`);
     } catch (error) {
-      console.error(`[MarketDataService] Failed to subscribe to trades ${symbol}:`, error);
+      console.error(`[MarketDataService] Failed to subscribe to trades for ${symbol}:`, error);
       throw error;
     }
   }
 
   /**
-   * Subscribe to candle updates for a symbol and interval
+   * Subscribe to candle updates for a specific symbol and interval
    */
-  async subscribeToCandles(symbol: string, interval: string): Promise<void> {
-    const key = `candles:${symbol}:${interval}`;
-
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.subscriberCount++;
-      console.log(`[MarketDataService] Reusing candles subscription for ${symbol} ${interval} (subscribers: ${existing.subscriberCount})`);
+  public async subscribeToCandles(symbol: string, interval: string): Promise<void> {
+    const subKey = `candles:${symbol}:${interval}`;
+    if (this.subscriptions.has(subKey)) {
+      console.log(`[MarketDataService] Already subscribed to candles for ${symbol} ${interval}`);
       return;
     }
 
     try {
-      const unsubscribe = await this.client.subscribeToCandles(
-        symbol,
-        interval,
-        (data: CandleUpdate) => {
-          this.emit('candles', { symbol, interval, data });
-          this.updateSubscriptionTimestamp(key);
+      // Subscribe to Hyperliquid WebSocket
+      await this.hlClient.subscribeToCandles(symbol, interval, (data) => {
+        // Cache the candles
+        if (!this.cache.candles.has(symbol)) {
+          this.cache.candles.set(symbol, new Map());
         }
-      );
+        const symbolCandles = this.cache.candles.get(symbol)!;
+        const candles = symbolCandles.get(interval) || [];
 
-      this.subscriptions.set(key, {
-        type: 'candles',
-        symbol,
-        interval,
-        unsubscribe,
-        subscriberCount: 1,
-        lastUpdate: new Date(),
+        // Update or append the candle
+        const existingIndex = candles.findIndex((c: any) => c.t === data.t);
+        if (existingIndex >= 0) {
+          candles[existingIndex] = data;
+        } else {
+          candles.push(data);
+          // Keep last 1000 candles
+          if (candles.length > 1000) candles.shift();
+        }
+        symbolCandles.set(interval, candles);
+
+        // Relay to Socket.io clients
+        this.io?.to(`market:${symbol}:${interval}`).emit('candles:update', {
+          symbol,
+          interval,
+          data,
+          timestamp: Date.now(),
+        });
       });
 
-      console.log(`[MarketDataService] Subscribed to candles: ${symbol} ${interval}`);
+      this.subscriptions.add(subKey);
+      console.log(`[MarketDataService] Subscribed to candles for ${symbol} ${interval}`);
+
+      // Fetch initial candle snapshot
+      const snapshot = await this.hlClient.getCandles(symbol, interval, {
+        startTime: Date.now() - 24 * 60 * 60 * 1000, // Last 24 hours
+        endTime: Date.now(),
+      });
+
+      if (!this.cache.candles.has(symbol)) {
+        this.cache.candles.set(symbol, new Map());
+      }
+      this.cache.candles.get(symbol)!.set(interval, snapshot);
     } catch (error) {
-      console.error(`[MarketDataService] Failed to subscribe to candles ${symbol} ${interval}:`, error);
+      console.error(`[MarketDataService] Failed to subscribe to candles for ${symbol} ${interval}:`, error);
       throw error;
     }
   }
 
   /**
-   * Subscribe to all mid prices
+   * Subscribe to all mid prices (for price ticker)
    */
-  async subscribeToAllMids(): Promise<void> {
-    const key = 'allMids';
-
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.subscriberCount++;
-      console.log(`[MarketDataService] Reusing allMids subscription (subscribers: ${existing.subscriberCount})`);
+  public async subscribeToAllMids(): Promise<void> {
+    const subKey = 'allMids';
+    if (this.subscriptions.has(subKey)) {
+      console.log('[MarketDataService] Already subscribed to allMids');
       return;
     }
 
     try {
-      const unsubscribe = await this.client.subscribeToAllMids((data: Record<string, string>) => {
-        this.emit('allMids', { data });
-        this.updateSubscriptionTimestamp(key);
+      // Subscribe to Hyperliquid WebSocket
+      await this.hlClient.subscribeToAllMids((data) => {
+        // Cache all mid prices
+        Object.entries(data.mids).forEach(([symbol, price]) => {
+          this.cache.allMids.set(symbol, price);
+        });
+
+        // Relay to Socket.io clients
+        this.io?.to('prices').emit('prices:update', {
+          data: data.mids,
+          timestamp: Date.now(),
+        });
       });
 
-      this.subscriptions.set(key, {
-        type: 'allMids',
-        unsubscribe,
-        subscriberCount: 1,
-        lastUpdate: new Date(),
-      });
-
+      this.subscriptions.add(subKey);
       console.log('[MarketDataService] Subscribed to allMids');
     } catch (error) {
       console.error('[MarketDataService] Failed to subscribe to allMids:', error);
@@ -236,233 +221,174 @@ export class MarketDataService extends EventEmitter {
   }
 
   /**
-   * Subscribe to user events (order fills, cancellations, etc.)
+   * Subscribe to user events (fills, order updates, etc.)
    */
-  async subscribeToUserEvents(userAddress: string): Promise<void> {
-    const key = `userEvents:${userAddress}`;
-
-    const existing = this.subscriptions.get(key);
-    if (existing) {
-      existing.subscriberCount++;
-      console.log(`[MarketDataService] Reusing userEvents subscription for ${userAddress} (subscribers: ${existing.subscriberCount})`);
+  public async subscribeToUserEvents(userId: string, callback: (data: WsUserEvent) => void): Promise<void> {
+    const subKey = `user:${userId}`;
+    if (this.subscriptions.has(subKey)) {
+      console.log(`[MarketDataService] Already subscribed to user events for ${userId}`);
       return;
     }
 
     try {
-      const unsubscribe = await this.client.subscribeToUserEvents(
-        userAddress,
-        (data: any) => {
-          this.emit('userEvents', { userAddress, data });
-          this.updateSubscriptionTimestamp(key);
-        }
-      );
+      // Subscribe to Hyperliquid WebSocket
+      await this.hlClient.subscribeToUserEvents(userId, (data) => {
+        callback(data);
 
-      this.subscriptions.set(key, {
-        type: 'userEvents',
-        userAddress,
-        unsubscribe,
-        subscriberCount: 1,
-        lastUpdate: new Date(),
+        // Relay to Socket.io clients in user's room
+        this.io?.to(`user:${userId}`).emit('user:event', {
+          data,
+          timestamp: Date.now(),
+        });
       });
 
-      console.log(`[MarketDataService] Subscribed to userEvents: ${userAddress}`);
+      this.subscriptions.add(subKey);
+      console.log(`[MarketDataService] Subscribed to user events for ${userId}`);
     } catch (error) {
-      console.error(`[MarketDataService] Failed to subscribe to userEvents ${userAddress}:`, error);
+      console.error(`[MarketDataService] Failed to subscribe to user events for ${userId}:`, error);
       throw error;
     }
   }
 
   /**
    * Unsubscribe from orderbook updates
-   * Decrements reference count and only unsubscribes when count reaches 0
    */
-  async unsubscribeFromOrderbook(symbol: string): Promise<void> {
-    await this.decrementSubscription(`orderbook:${symbol}`);
+  public unsubscribeFromOrderbook(symbol: string): void {
+    const subKey = `orderbook:${symbol}`;
+    if (!this.subscriptions.has(subKey)) return;
+
+    this.hlClient.unsubscribeFromOrderbook(symbol);
+    this.subscriptions.delete(subKey);
+    this.cache.orderbooks.delete(symbol);
+    console.log(`[MarketDataService] Unsubscribed from orderbook for ${symbol}`);
   }
 
   /**
-   * Unsubscribe from trades
+   * Unsubscribe from trade updates
    */
-  async unsubscribeFromTrades(symbol: string): Promise<void> {
-    await this.decrementSubscription(`trades:${symbol}`);
+  public unsubscribeFromTrades(symbol: string): void {
+    const subKey = `trades:${symbol}`;
+    if (!this.subscriptions.has(subKey)) return;
+
+    this.hlClient.unsubscribeFromTrades(symbol);
+    this.subscriptions.delete(subKey);
+    this.cache.trades.delete(symbol);
+    console.log(`[MarketDataService] Unsubscribed from trades for ${symbol}`);
   }
 
   /**
-   * Unsubscribe from candles
+   * Unsubscribe from candle updates
    */
-  async unsubscribeFromCandles(symbol: string, interval: string): Promise<void> {
-    await this.decrementSubscription(`candles:${symbol}:${interval}`);
-  }
+  public unsubscribeFromCandles(symbol: string, interval: string): void {
+    const subKey = `candles:${symbol}:${interval}`;
+    if (!this.subscriptions.has(subKey)) return;
 
-  /**
-   * Unsubscribe from all mids
-   */
-  async unsubscribeFromAllMids(): Promise<void> {
-    await this.decrementSubscription('allMids');
+    this.hlClient.unsubscribeFromCandles(symbol, interval);
+    this.subscriptions.delete(subKey);
+
+    const symbolCandles = this.cache.candles.get(symbol);
+    if (symbolCandles) {
+      symbolCandles.delete(interval);
+      if (symbolCandles.size === 0) {
+        this.cache.candles.delete(symbol);
+      }
+    }
+    console.log(`[MarketDataService] Unsubscribed from candles for ${symbol} ${interval}`);
   }
 
   /**
    * Unsubscribe from user events
    */
-  async unsubscribeFromUserEvents(userAddress: string): Promise<void> {
-    await this.decrementSubscription(`userEvents:${userAddress}`);
+  public unsubscribeFromUserEvents(userId: string): void {
+    const subKey = `user:${userId}`;
+    if (!this.subscriptions.has(subKey)) return;
+
+    this.hlClient.unsubscribeFromUserEvents(userId);
+    this.subscriptions.delete(subKey);
+    console.log(`[MarketDataService] Unsubscribed from user events for ${userId}`);
   }
 
   /**
-   * Decrement subscription reference count and unsubscribe if zero
+   * Get cached orderbook data
    */
-  private async decrementSubscription(key: string): Promise<void> {
-    const subscription = this.subscriptions.get(key);
-    if (!subscription) {
-      console.warn(`[MarketDataService] Attempted to unsubscribe from non-existent subscription: ${key}`);
-      return;
-    }
+  public getCachedOrderbook(symbol: string): any {
+    return this.cache.orderbooks.get(symbol);
+  }
 
-    subscription.subscriberCount--;
+  /**
+   * Get cached trades data
+   */
+  public getCachedTrades(symbol: string): any[] {
+    return this.cache.trades.get(symbol) || [];
+  }
 
-    if (subscription.subscriberCount <= 0) {
-      try {
-        await subscription.unsubscribe();
-        this.subscriptions.delete(key);
-        console.log(`[MarketDataService] Unsubscribed from ${key}`);
-      } catch (error) {
-        console.error(`[MarketDataService] Error unsubscribing from ${key}:`, error);
+  /**
+   * Get cached candles data
+   */
+  public getCachedCandles(symbol: string, interval: string): any[] {
+    return this.cache.candles.get(symbol)?.get(interval) || [];
+  }
+
+  /**
+   * Get cached mid price
+   */
+  public getCachedMidPrice(symbol: string): string | undefined {
+    return this.cache.allMids.get(symbol);
+  }
+
+  /**
+   * Get all cached mid prices
+   */
+  public getAllCachedMidPrices(): Map<string, string> {
+    return this.cache.allMids;
+  }
+
+  /**
+   * Get active subscriptions count
+   */
+  public getActiveSubscriptionsCount(): number {
+    return this.subscriptions.size;
+  }
+
+  /**
+   * Check if subscribed to a specific feed
+   */
+  public isSubscribed(type: string, symbol?: string, interval?: string): boolean {
+    let subKey = type;
+    if (symbol) subKey += `:${symbol}`;
+    if (interval) subKey += `:${interval}`;
+    return this.subscriptions.has(subKey);
+  }
+
+  /**
+   * Clean up all subscriptions
+   */
+  public async cleanup(): Promise<void> {
+    console.log('[MarketDataService] Cleaning up all subscriptions...');
+
+    // Unsubscribe from all feeds
+    for (const subKey of this.subscriptions) {
+      const [type, symbol, interval] = subKey.split(':');
+
+      if (type === 'orderbook' && symbol) {
+        this.hlClient.unsubscribeFromOrderbook(symbol);
+      } else if (type === 'trades' && symbol) {
+        this.hlClient.unsubscribeFromTrades(symbol);
+      } else if (type === 'candles' && symbol && interval) {
+        this.hlClient.unsubscribeFromCandles(symbol, interval);
+      } else if (type === 'user' && symbol) {
+        this.hlClient.unsubscribeFromUserEvents(symbol);
       }
-    } else {
-      console.log(`[MarketDataService] Decreased subscriber count for ${key} (remaining: ${subscription.subscriberCount})`);
-    }
-  }
-
-  /**
-   * Update last update timestamp for a subscription
-   */
-  private updateSubscriptionTimestamp(key: string): void {
-    const subscription = this.subscriptions.get(key);
-    if (subscription) {
-      subscription.lastUpdate = new Date();
-    }
-  }
-
-  /**
-   * Get all active subscriptions
-   */
-  getActiveSubscriptions(): Array<{
-    key: string;
-    type: SubscriptionType;
-    symbol?: string;
-    interval?: string;
-    userAddress?: string;
-    subscriberCount: number;
-    lastUpdate: Date;
-  }> {
-    return Array.from(this.subscriptions.entries()).map(([key, sub]) => ({
-      key,
-      type: sub.type,
-      symbol: sub.symbol,
-      interval: sub.interval,
-      userAddress: sub.userAddress,
-      subscriberCount: sub.subscriberCount,
-      lastUpdate: sub.lastUpdate,
-    }));
-  }
-
-  /**
-   * Clean up stale subscriptions (no updates for specified duration)
-   */
-  async cleanupStaleSubscriptions(maxAgeMs: number = 300000): Promise<number> {
-    const now = Date.now();
-    let cleanedCount = 0;
-
-    for (const [key, subscription] of this.subscriptions.entries()) {
-      const age = now - subscription.lastUpdate.getTime();
-      if (age > maxAgeMs) {
-        console.log(`[MarketDataService] Cleaning up stale subscription: ${key} (age: ${age}ms)`);
-        try {
-          await subscription.unsubscribe();
-          this.subscriptions.delete(key);
-          cleanedCount++;
-        } catch (error) {
-          console.error(`[MarketDataService] Error cleaning up ${key}:`, error);
-        }
-      }
     }
 
-    if (cleanedCount > 0) {
-      console.log(`[MarketDataService] Cleaned up ${cleanedCount} stale subscriptions`);
-    }
-
-    return cleanedCount;
-  }
-
-  /**
-   * Unsubscribe from all subscriptions
-   */
-  async unsubscribeAll(): Promise<void> {
-    this.isShuttingDown = true;
-    console.log(`[MarketDataService] Unsubscribing from all subscriptions (${this.subscriptions.size})`);
-
-    const unsubscribePromises = Array.from(this.subscriptions.values()).map(
-      (subscription) => subscription.unsubscribe().catch((error) => {
-        console.error('[MarketDataService] Error during unsubscribe:', error);
-      })
-    );
-
-    await Promise.all(unsubscribePromises);
     this.subscriptions.clear();
-    this.removeAllListeners();
+    this.cache.orderbooks.clear();
+    this.cache.trades.clear();
+    this.cache.candles.clear();
+    this.cache.allMids.clear();
 
-    console.log('[MarketDataService] All subscriptions cleared');
-  }
-
-  /**
-   * Get subscription statistics
-   */
-  getStats() {
-    const stats = {
-      totalSubscriptions: this.subscriptions.size,
-      totalSubscribers: 0,
-      byType: {} as Record<SubscriptionType, number>,
-    };
-
-    for (const subscription of this.subscriptions.values()) {
-      stats.totalSubscribers += subscription.subscriberCount;
-      stats.byType[subscription.type] = (stats.byType[subscription.type] || 0) + 1;
-    }
-
-    return stats;
+    console.log('[MarketDataService] Cleanup complete');
   }
 }
 
-/**
- * Singleton instance
- */
-let marketDataServiceInstance: MarketDataService | null = null;
-
-/**
- * Get the singleton instance of MarketDataService
- */
-export function getMarketDataService(): MarketDataService {
-  if (!marketDataServiceInstance) {
-    marketDataServiceInstance = new MarketDataService();
-    console.log('[MarketDataService] Instance created');
-
-    // Set up periodic cleanup of stale subscriptions (every 5 minutes)
-    setInterval(() => {
-      if (marketDataServiceInstance) {
-        marketDataServiceInstance.cleanupStaleSubscriptions(300000); // 5 minutes
-      }
-    }, 300000);
-  }
-
-  return marketDataServiceInstance;
-}
-
-/**
- * Reset the singleton instance (useful for testing)
- */
-export async function resetMarketDataService(): Promise<void> {
-  if (marketDataServiceInstance) {
-    await marketDataServiceInstance.unsubscribeAll();
-    marketDataServiceInstance = null;
-  }
-}
+export default MarketDataService;
