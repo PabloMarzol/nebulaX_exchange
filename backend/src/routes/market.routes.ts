@@ -83,11 +83,11 @@ router.get('/prices', async (req: Request, res: Response) => {
 
       // Fallback to API
       const allMids = await hlClient.getAllMids();
-      const price = allMids.mids[symbol];
+      const price = allMids?.mids?.[symbol] || null;
 
       return res.json({
         success: true,
-        data: { [symbol]: price || null },
+        data: { [symbol]: price },
         cached: false,
       });
     }
@@ -110,7 +110,7 @@ router.get('/prices', async (req: Request, res: Response) => {
     const allMids = await hlClient.getAllMids();
     res.json({
       success: true,
-      data: allMids.mids,
+      data: allMids?.mids || {},
       cached: false,
     });
   } catch (error) {

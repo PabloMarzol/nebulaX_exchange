@@ -42,28 +42,46 @@ export function Orderbook({ symbol }: OrderbookProps) {
 
     const [askLevels = [], bidLevels = []] = dataToProcess.levels;
 
+    // Validate that we have arrays
+    if (!Array.isArray(askLevels) || !Array.isArray(bidLevels)) {
+      console.warn('[Orderbook] Invalid orderbook data format:', dataToProcess);
+      return;
+    }
+
     // Process asks (sorted ascending by price)
     const processedAsks: OrderbookLevel[] = [];
     let askTotal = 0;
-    for (const [price, size] of askLevels.slice(0, 15)) {
-      askTotal += parseFloat(size);
-      processedAsks.push({
-        price,
-        size,
-        total: askTotal,
-      });
+    try {
+      for (const level of askLevels.slice(0, 15)) {
+        if (!Array.isArray(level) || level.length < 2) continue;
+        const [price, size] = level;
+        askTotal += parseFloat(size);
+        processedAsks.push({
+          price,
+          size,
+          total: askTotal,
+        });
+      }
+    } catch (err) {
+      console.error('[Orderbook] Error processing asks:', err);
     }
 
     // Process bids (sorted descending by price)
     const processedBids: OrderbookLevel[] = [];
     let bidTotal = 0;
-    for (const [price, size] of bidLevels.slice(0, 15)) {
-      bidTotal += parseFloat(size);
-      processedBids.push({
-        price,
-        size,
-        total: bidTotal,
-      });
+    try {
+      for (const level of bidLevels.slice(0, 15)) {
+        if (!Array.isArray(level) || level.length < 2) continue;
+        const [price, size] = level;
+        bidTotal += parseFloat(size);
+        processedBids.push({
+          price,
+          size,
+          total: bidTotal,
+        });
+      }
+    } catch (err) {
+      console.error('[Orderbook] Error processing bids:', err);
     }
 
     setAsks(processedAsks.reverse()); // Reverse to show highest ask at bottom
