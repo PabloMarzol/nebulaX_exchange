@@ -71,47 +71,26 @@ router.get('/prices', async (req: Request, res: Response) => {
     const { symbol } = validation.data;
 
     if (symbol) {
-      // Get specific symbol price (from cache first, then API)
+      // Get specific symbol price from WebSocket cache only
       const cachedPrice = marketDataService.getCachedMidPrice(symbol);
-      if (cachedPrice) {
-        return res.json({
-          success: true,
-          data: { [symbol]: cachedPrice },
-          cached: true,
-        });
-      }
-
-      // Fallback to API
-      const allMids = await hlClient.getAllMids();
-      const price = allMids.mids[symbol];
-
       return res.json({
         success: true,
-        data: { [symbol]: price || null },
-        cached: false,
-      });
-    }
-
-    // Get all prices (from cache first, then API)
-    const cachedPrices = marketDataService.getAllCachedMidPrices();
-    if (cachedPrices.size > 0) {
-      const pricesObj: Record<string, string> = {};
-      cachedPrices.forEach((price, sym) => {
-        pricesObj[sym] = price;
-      });
-      return res.json({
-        success: true,
-        data: pricesObj,
+        data: { [symbol]: cachedPrice || null },
         cached: true,
       });
     }
 
-    // Fallback to API
-    const allMids = await hlClient.getAllMids();
+    // Get all prices from WebSocket cache only
+    const cachedPrices = marketDataService.getAllCachedMidPrices();
+    const pricesObj: Record<string, string> = {};
+    cachedPrices.forEach((price, sym) => {
+      pricesObj[sym] = price;
+    });
+
     res.json({
       success: true,
-      data: allMids.mids,
-      cached: false,
+      data: pricesObj,
+      cached: true,
     });
   } catch (error) {
     console.error('Error fetching prices:', error);
@@ -138,22 +117,12 @@ router.get('/orderbook', async (req: Request, res: Response) => {
 
     const { symbol } = validation.data;
 
-    // Try to get from cache first
+    // Get orderbook from WebSocket cache only
     const cachedOrderbook = marketDataService.getCachedOrderbook(symbol);
-    if (cachedOrderbook) {
-      return res.json({
-        success: true,
-        data: cachedOrderbook,
-        cached: true,
-      });
-    }
-
-    // Fallback to API
-    const orderbook = await hlClient.getOrderbook(symbol);
     res.json({
       success: true,
-      data: orderbook,
-      cached: false,
+      data: cachedOrderbook || { levels: [[], []] },
+      cached: true,
     });
   } catch (error) {
     console.error('Error fetching orderbook:', error);
@@ -178,34 +147,14 @@ router.get('/candles', async (req: Request, res: Response) => {
       });
     }
 
-    const { symbol, interval, startTime, endTime } = validation.data;
+    const { symbol, interval } = validation.data;
 
-    // Try to get from cache first
+    // Get candles from WebSocket cache only
     const cachedCandles = marketDataService.getCachedCandles(symbol, interval);
-    if (cachedCandles.length > 0) {
-      return res.json({
-        success: true,
-        data: cachedCandles,
-        cached: true,
-      });
-    }
-
-    // Fallback to API
-    const options: any = {};
-    if (startTime) options.startTime = parseInt(startTime);
-    if (endTime) options.endTime = parseInt(endTime);
-
-    // Default to last 24 hours if no time range specified
-    if (!startTime && !endTime) {
-      options.startTime = Date.now() - 24 * 60 * 60 * 1000;
-      options.endTime = Date.now();
-    }
-
-    const candles = await hlClient.getCandles(symbol, interval, options);
     res.json({
       success: true,
-      data: candles,
-      cached: false,
+      data: cachedCandles,
+      cached: true,
     });
   } catch (error) {
     console.error('Error fetching candles:', error);
@@ -259,14 +208,8 @@ router.get('/24h-stats', async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch 24h candles to calculate stats
-    const endTime = Date.now();
-    const startTime = endTime - 24 * 60 * 60 * 1000;
-
-    const candles = await hlClient.getCandles(symbol, '1h', {
-      startTime,
-      endTime,
-    });
+    // Get 24h candles from WebSocket cache
+    const candles = marketDataService.getCachedCandles(symbol, '1h');
 
     if (candles.length === 0) {
       return res.json({
@@ -275,7 +218,7 @@ router.get('/24h-stats', async (req: Request, res: Response) => {
       });
     }
 
-    // Calculate 24h stats
+    // Calculate 24h stats from cached candles
     const open = parseFloat(candles[0].o);
     const close = parseFloat(candles[candles.length - 1].c);
     const high = Math.max(...candles.map((c: any) => parseFloat(c.h)));

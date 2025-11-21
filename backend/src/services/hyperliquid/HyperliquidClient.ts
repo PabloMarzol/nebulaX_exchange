@@ -5,12 +5,16 @@ import {
   HttpTransport,
   WebSocketTransport,
 } from '@nktkas/hyperliquid';
+import { RateLimiter } from '../../utils/RateLimiter.js';
 
 interface HyperliquidConfig {
   testnet: boolean;
   walletAddress?: string;
   apiPrivateKey: string;
 }
+
+import dotenv from "dotenv";
+dotenv.config()
 
 /**
  * Hyperliquid API Client Wrapper
@@ -26,9 +30,12 @@ export class HyperliquidClient {
   public infoClient: InfoClient;
   public exchangeClient: ExchangeClient;
   public subscriptionClient: SubscriptionClient;
+  private subscriptions: Map<string, () => void> = new Map();
+  private rateLimiter: RateLimiter;
 
   constructor(config: HyperliquidConfig) {
     this.config = config;
+    this.rateLimiter = new RateLimiter(250); // 250ms minimum delay between requests
 
     const httpUrl = config.testnet
       ? process.env.HYPERLIQUID_TESTNET_URL || 'https://api.hyperliquid-testnet.xyz'
@@ -74,12 +81,14 @@ export class HyperliquidClient {
    * @param userAddress - User's wallet address
    */
   async getUserState(userAddress: string) {
-    try {
-      return await this.infoClient.clearinghouseState({ user: userAddress });
-    } catch (error) {
-      console.error('[HyperliquidClient] Failed to get user state:', error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.clearinghouseState({ user: userAddress });
+      } catch (error) {
+        console.error('[HyperliquidClient] Failed to get user state:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -87,12 +96,14 @@ export class HyperliquidClient {
    * @param symbol - Trading pair symbol (e.g., 'BTC')
    */
   async getOrderbook(symbol: string) {
-    try {
-      return await this.infoClient.l2Book({ coin: symbol });
-    } catch (error) {
-      console.error(`[HyperliquidClient] Failed to get orderbook for ${symbol}:`, error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.l2Book({ coin: symbol });
+      } catch (error) {
+        console.error(`[HyperliquidClient] Failed to get orderbook for ${symbol}:`, error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -111,12 +122,14 @@ export class HyperliquidClient {
    * Query all mid prices
    */
   async getAllMids() {
-    try {
-      return await this.infoClient.allMids();
-    } catch (error) {
-      console.error('[HyperliquidClient] Failed to get all mids:', error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.allMids();
+      } catch (error) {
+        console.error('[HyperliquidClient] Failed to get all mids:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -132,17 +145,45 @@ export class HyperliquidClient {
     startTime: number;
     endTime: number;
   }) {
-    try {
-      return await this.infoClient.candleSnapshot({
-        coin: params.symbol,
-        interval: params.interval,
-        startTime: params.startTime,
-        endTime: params.endTime,
-      });
-    } catch (error) {
-      console.error('[HyperliquidClient] Failed to get candle snapshot:', error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.candleSnapshot({
+          coin: params.symbol,
+          interval: params.interval,
+          startTime: params.startTime,
+          endTime: params.endTime,
+        });
+      } catch (error) {
+        console.error('[HyperliquidClient] Failed to get candle snapshot:', error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Alias for getCandleSnapshot to maintain compatibility
+   */
+  async getCandles(symbol: string, interval: string, options: { startTime: number; endTime: number }) {
+    return this.getCandleSnapshot({
+      symbol,
+      interval,
+      startTime: options.startTime,
+      endTime: options.endTime,
+    });
+  }
+
+  /**
+   * Get clearinghouse state (alias for getUserState)
+   */
+  async getClearinghouseState(userAddress: string) {
+    return this.getUserState(userAddress);
+  }
+
+  /**
+   * Get metadata and asset contexts (alias for getAllMetas)
+   */
+  async getMetaAndAssetContexts() {
+    return this.getAllMetas();
   }
 
   /**
@@ -237,11 +278,28 @@ export class HyperliquidClient {
         }
       );
 
+      // Store unsubscribe function
+      const key = `orderbook:${symbol}`;
+      this.subscriptions.set(key, subscription.unsubscribe);
+
       console.log(`[HyperliquidClient] Subscribed to orderbook: ${symbol}`);
       return subscription;
     } catch (error) {
       console.error('[HyperliquidClient] Failed to subscribe to orderbook:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Unsubscribe from orderbook updates
+   */
+  unsubscribeFromOrderbook(symbol: string) {
+    const key = `orderbook:${symbol}`;
+    const unsubscribe = this.subscriptions.get(key);
+    if (unsubscribe) {
+      unsubscribe();
+      this.subscriptions.delete(key);
+      console.log(`[HyperliquidClient] Unsubscribed from orderbook: ${symbol}`);
     }
   }
 
@@ -259,11 +317,28 @@ export class HyperliquidClient {
         }
       );
 
+      // Store unsubscribe function
+      const key = `trades:${symbol}`;
+      this.subscriptions.set(key, subscription.unsubscribe);
+
       console.log(`[HyperliquidClient] Subscribed to trades: ${symbol}`);
       return subscription;
     } catch (error) {
       console.error('[HyperliquidClient] Failed to subscribe to trades:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Unsubscribe from trades stream
+   */
+  unsubscribeFromTrades(symbol: string) {
+    const key = `trades:${symbol}`;
+    const unsubscribe = this.subscriptions.get(key);
+    if (unsubscribe) {
+      unsubscribe();
+      this.subscriptions.delete(key);
+      console.log(`[HyperliquidClient] Unsubscribed from trades: ${symbol}`);
     }
   }
 
@@ -281,11 +356,28 @@ export class HyperliquidClient {
         }
       );
 
+      // Store unsubscribe function
+      const key = `user:${userAddress}`;
+      this.subscriptions.set(key, subscription.unsubscribe);
+
       console.log(`[HyperliquidClient] Subscribed to user events: ${userAddress}`);
       return subscription;
     } catch (error) {
       console.error('[HyperliquidClient] Failed to subscribe to user events:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Unsubscribe from user events
+   */
+  unsubscribeFromUserEvents(userAddress: string) {
+    const key = `user:${userAddress}`;
+    const unsubscribe = this.subscriptions.get(key);
+    if (unsubscribe) {
+      unsubscribe();
+      this.subscriptions.delete(key);
+      console.log(`[HyperliquidClient] Unsubscribed from user events: ${userAddress}`);
     }
   }
 
@@ -326,11 +418,28 @@ export class HyperliquidClient {
         }
       );
 
+      // Store unsubscribe function
+      const key = `candles:${symbol}:${interval}`;
+      this.subscriptions.set(key, subscription.unsubscribe);
+
       console.log(`[HyperliquidClient] Subscribed to candles: ${symbol} ${interval}`);
       return subscription;
     } catch (error) {
       console.error('[HyperliquidClient] Failed to subscribe to candles:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Unsubscribe from candle updates
+   */
+  unsubscribeFromCandles(symbol: string, interval: string) {
+    const key = `candles:${symbol}:${interval}`;
+    const unsubscribe = this.subscriptions.get(key);
+    if (unsubscribe) {
+      unsubscribe();
+      this.subscriptions.delete(key);
+      console.log(`[HyperliquidClient] Unsubscribed from candles: ${symbol} ${interval}`);
     }
   }
 
@@ -342,6 +451,14 @@ export class HyperliquidClient {
       testnet: this.config.testnet,
       walletAddress: this.config.walletAddress,
     };
+  }
+
+  /**
+   * Static method to get singleton instance
+   * This is an alias for getHyperliquidClient() to maintain compatibility
+   */
+  static getInstance(): HyperliquidClient {
+    return getHyperliquidClient();
   }
 }
 
@@ -356,9 +473,9 @@ let hyperliquidClientInstance: HyperliquidClient | null = null;
  */
 export function getHyperliquidClient(): HyperliquidClient {
   if (!hyperliquidClientInstance) {
-    const testnet = process.env.HYPERLIQUID_TESTNET === 'true';
-    const apiPrivateKey = process.env.HYPERLIQUID_API_PRIVATE_KEY || process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
-    const walletAddress = process.env.HYPERLIQUID_LIVE_API_WALLE;
+    const testnet = process.env.HYPERLIQUID_TESTNET === 'false';
+    const apiPrivateKey = process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
+    const walletAddress = process.env.HYPERLIQUID_LIVE_API_WALLET;
 
     if (!apiPrivateKey) {
       throw new Error(

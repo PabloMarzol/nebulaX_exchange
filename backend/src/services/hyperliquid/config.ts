@@ -21,9 +21,9 @@ export type HyperliquidConfig = z.infer<typeof hyperliquidConfigSchema>;
  * @throws {Error} If required environment variables are missing or invalid
  */
 export function loadHyperliquidConfig(): HyperliquidConfig {
-  const testnet = process.env.HYPERLIQUID_TESTNET === 'true';
-  const apiPrivateKey = process.env.HYPERLIQUID_API_PRIVATE_KEY || process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
-  const wallet = process.env.HYPERLIQUID_LIVE_API_WALLE;
+  const testnet = process.env.HYPERLIQUID_TESTNET === 'false';
+  const apiPrivateKey = process.env.HYPERLIQUID_LIVE_API_PRIVATE_KEY;
+  const wallet = process.env.HYPERLIQUID_LIVE_API_WALLET;
 
   const config = {
     testnet,

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { devAuth } from '../middleware/auth.middleware.js';
 import { tradingLimiter } from '../middleware/rateLimit.middleware.js';
 import { OrderExecutionService } from '../services/hyperliquid/OrderExecutionService.js';
 import { z } from 'zod';
@@ -7,8 +7,8 @@ import { z } from 'zod';
 const router = Router();
 const orderService = OrderExecutionService.getInstance();
 
-// All trading routes require authentication
-router.use(authenticate);
+// All trading routes require authentication (or use dev wallet from env)
+router.use(devAuth);
 router.use(tradingLimiter);
 
 // Validation schemas
@@ -51,8 +51,8 @@ router.post('/orders', async (req: Request, res: Response) => {
       });
     }
 
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -60,7 +60,7 @@ router.post('/orders', async (req: Request, res: Response) => {
     }
 
     const result = await orderService.placeOrder({
-      userId,
+      userId: walletAddress,
       ...validation.data,
     });
 
@@ -88,8 +88,8 @@ router.get('/orders', async (req: Request, res: Response) => {
       });
     }
 
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -98,7 +98,7 @@ router.get('/orders', async (req: Request, res: Response) => {
 
     const { symbol, limit } = validation.data;
     const orders = await orderService.getOrderHistory(
-      userId,
+      walletAddress,
       symbol,
       limit ? parseInt(limit) : 100
     );
@@ -130,8 +130,8 @@ router.get('/orders/open', async (req: Request, res: Response) => {
       });
     }
 
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -139,7 +139,7 @@ router.get('/orders/open', async (req: Request, res: Response) => {
     }
 
     const { symbol } = validation.data;
-    const orders = await orderService.getOpenOrders(userId, symbol);
+    const orders = await orderService.getOpenOrders(walletAddress, symbol);
 
     res.json({
       success: true,
@@ -168,8 +168,8 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -185,7 +185,7 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
     }
 
     const result = await orderService.cancelOrder({
-      userId,
+      userId: walletAddress,
       orderId: validation.data.id,
       symbol,
     });
@@ -206,8 +206,8 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
  */
 router.delete('/orders', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -216,7 +216,7 @@ router.delete('/orders', async (req: Request, res: Response) => {
 
     const { symbol } = req.query;
     const result = await orderService.cancelAllOrders(
-      userId,
+      walletAddress,
       symbol as string | undefined
     );
 
@@ -236,8 +236,8 @@ router.delete('/orders', async (req: Request, res: Response) => {
  */
 router.get('/trades', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -274,8 +274,8 @@ router.get('/positions', async (req: Request, res: Response) => {
       });
     }
 
-    const userId = (req as any).user?.id;
-    if (!userId) {
+    const walletAddress = (req as any).user?.walletAddress;
+    if (!walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -283,7 +283,7 @@ router.get('/positions', async (req: Request, res: Response) => {
     }
 
     const { symbol } = validation.data;
-    const positions = await orderService.getPositions(userId, symbol);
+    const positions = await orderService.getPositions(walletAddress, symbol);
 
     res.json({
       success: true,
