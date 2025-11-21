@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { env } from '@/config/env';
 
@@ -99,7 +99,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const subscribe = (type: 'market' | 'candles' | 'prices' | 'user', symbol?: string, interval?: string) => {
+  const subscribe = useCallback((type: 'market' | 'candles' | 'prices' | 'user', symbol?: string, interval?: string) => {
     if (!socketRef.current) return;
 
     if (type === 'market' && symbol) {
@@ -112,9 +112,9 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       // TODO: Add userId and token
       // socketRef.current.emit('subscribe:user', { userId, token });
     }
-  };
+  }, []);
 
-  const unsubscribe = (type: 'market' | 'candles' | 'prices' | 'user', symbol?: string, interval?: string) => {
+  const unsubscribe = useCallback((type: 'market' | 'candles' | 'prices' | 'user', symbol?: string, interval?: string) => {
     if (!socketRef.current) return;
 
     if (type === 'market' && symbol) {
@@ -127,7 +127,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       // TODO: Add userId
       // socketRef.current.emit('unsubscribe:user', { userId });
     }
-  };
+  }, []);
 
   return (
     <LiveDataContext.Provider
