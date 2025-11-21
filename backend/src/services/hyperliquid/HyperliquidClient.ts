@@ -5,6 +5,7 @@ import {
   HttpTransport,
   WebSocketTransport,
 } from '@nktkas/hyperliquid';
+import { RateLimiter } from '../../utils/RateLimiter.js';
 
 interface HyperliquidConfig {
   testnet: boolean;
@@ -30,9 +31,11 @@ export class HyperliquidClient {
   public exchangeClient: ExchangeClient;
   public subscriptionClient: SubscriptionClient;
   private subscriptions: Map<string, () => void> = new Map();
+  private rateLimiter: RateLimiter;
 
   constructor(config: HyperliquidConfig) {
     this.config = config;
+    this.rateLimiter = new RateLimiter(250); // 250ms minimum delay between requests
 
     const httpUrl = config.testnet
       ? process.env.HYPERLIQUID_TESTNET_URL || 'https://api.hyperliquid-testnet.xyz'
@@ -78,12 +81,14 @@ export class HyperliquidClient {
    * @param userAddress - User's wallet address
    */
   async getUserState(userAddress: string) {
-    try {
-      return await this.infoClient.clearinghouseState({ user: userAddress });
-    } catch (error) {
-      console.error('[HyperliquidClient] Failed to get user state:', error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.clearinghouseState({ user: userAddress });
+      } catch (error) {
+        console.error('[HyperliquidClient] Failed to get user state:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -91,12 +96,14 @@ export class HyperliquidClient {
    * @param symbol - Trading pair symbol (e.g., 'BTC')
    */
   async getOrderbook(symbol: string) {
-    try {
-      return await this.infoClient.l2Book({ coin: symbol });
-    } catch (error) {
-      console.error(`[HyperliquidClient] Failed to get orderbook for ${symbol}:`, error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.l2Book({ coin: symbol });
+      } catch (error) {
+        console.error(`[HyperliquidClient] Failed to get orderbook for ${symbol}:`, error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -115,12 +122,14 @@ export class HyperliquidClient {
    * Query all mid prices
    */
   async getAllMids() {
-    try {
-      return await this.infoClient.allMids();
-    } catch (error) {
-      console.error('[HyperliquidClient] Failed to get all mids:', error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.allMids();
+      } catch (error) {
+        console.error('[HyperliquidClient] Failed to get all mids:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -136,17 +145,19 @@ export class HyperliquidClient {
     startTime: number;
     endTime: number;
   }) {
-    try {
-      return await this.infoClient.candleSnapshot({
-        coin: params.symbol,
-        interval: params.interval,
-        startTime: params.startTime,
-        endTime: params.endTime,
-      });
-    } catch (error) {
-      console.error('[HyperliquidClient] Failed to get candle snapshot:', error);
-      throw error;
-    }
+    return this.rateLimiter.execute(async () => {
+      try {
+        return await this.infoClient.candleSnapshot({
+          coin: params.symbol,
+          interval: params.interval,
+          startTime: params.startTime,
+          endTime: params.endTime,
+        });
+      } catch (error) {
+        console.error('[HyperliquidClient] Failed to get candle snapshot:', error);
+        throw error;
+      }
+    });
   }
 
   /**

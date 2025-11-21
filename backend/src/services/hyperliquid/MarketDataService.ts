@@ -169,18 +169,9 @@ export class MarketDataService {
       });
 
       this.subscriptions.add(subKey);
-      console.log(`[MarketDataService] Subscribed to candles for ${symbol} ${interval}`);
+      console.log(`[MarketDataService] Subscribed to candles for ${symbol} ${interval} - WebSocket will provide data`);
 
-      // Fetch initial candle snapshot
-      const snapshot = await this.hlClient.getCandles(symbol, interval, {
-        startTime: Date.now() - 24 * 60 * 60 * 1000, // Last 24 hours
-        endTime: Date.now(),
-      });
-
-      if (!this.cache.candles.has(symbol)) {
-        this.cache.candles.set(symbol, new Map());
-      }
-      this.cache.candles.get(symbol)!.set(interval, snapshot);
+      // WebSocket subscription provides initial snapshot automatically - no REST API call needed!
     } catch (error) {
       console.error(`[MarketDataService] Failed to subscribe to candles for ${symbol} ${interval}:`, error);
       throw error;
