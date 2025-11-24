@@ -7,7 +7,7 @@
     "./schema": "./schema/index.ts"
   },
   "dependencies": {
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.39.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
