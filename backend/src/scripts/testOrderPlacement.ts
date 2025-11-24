@@ -31,7 +31,7 @@ async function main() {
 
   // Test user (replace with actual user ID and wallet address)
   const testUserId = uuidv4(); // In production, this would come from your users table
-  const testUserAddress = process.env.HYPERLIQUID_WALLET_ADDRESS;
+  const testUserAddress = process.env.HYPERLIQUID_LIVE_API_WALLET;
 
   if (!testUserAddress) {
     console.error('❌ HYPERLIQUID_WALLET_ADDRESS not set in environment');

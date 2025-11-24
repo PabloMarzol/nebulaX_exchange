@@ -6,7 +6,7 @@ import {
   hyperliquidPositions,
   hyperliquidReconciliations,
   type NewHyperliquidReconciliation,
-} from "../../db/schema/hyperliquid";
+} from "@shared/schema/hyperliquid.schema";
 import { eq, and, inArray, isNull } from 'drizzle-orm';
 
 /**

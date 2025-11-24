@@ -182,5 +182,4 @@ export {
   type HyperliquidReconciliation,
   type NewHyperliquidReconciliation,
   type HyperliquidUserStateCache,
-  type NewHyperliquidUserStateCache,
-} from "../../db/schema/hyperliquid";
+} from "@shared/schema/hyperliquid.schema";
