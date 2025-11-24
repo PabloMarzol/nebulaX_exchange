@@ -170,20 +170,19 @@ export class OrderExecutionService {
           const [insertedOrder] = await db.insert(hyperliquidOrders).values({
             userId,
             symbol,
-            orderId: orderData.resting?.oid?.toString() || `temp-${Date.now()}`,
-            clientOrderId: null,
+            internalOrderId,
+            hyperliquidOrderId: orderData.resting?.oid?.toString(),
             side,
-            type,
+            orderType: type,
             price: price?.toString() || null,
-            quantity: quantity.toString(), // DB column 'quantity'
-            size: quantity.toString(),     // DB column 'size' (seems redundant in schema usage sometimes, handling user test mismatch)
-            filledQuantity: '0',
-            remainingQuantity: quantity.toString(),
+            size: quantity.toString(),
+            filledSize: '0',
+            remainingSize: quantity.toString(),
             status: 'open',
             timeInForce: timeInForce || 'Gtc',
             reduceOnly: reduceOnly || false,
             postOnly: postOnly || false,
-            leverage: leverage?.toString() || null,
+            metadata: { leverage },
             createdAt: new Date(),
             updatedAt: new Date(),
           }).returning({ id: hyperliquidOrders.id });
@@ -306,24 +305,17 @@ export class OrderExecutionService {
       // If orderId looks like UUID (internal), fetch HL ID from DB
       if (db && (orderId.length > 20 || orderId.includes('-'))) {
          const [order] = await db.select().from(hyperliquidOrders).where(eq(hyperliquidOrders.id, orderId)).limit(1);
-         if (order && order.orderId && !order.orderId.startsWith('temp-')) {
-            hlOrderId = order.orderId;
+         if (order && order.hyperliquidOrderId && !order.hyperliquidOrderId.startsWith('temp-')) {
+            hlOrderId = order.hyperliquidOrderId;
          } else {
             console.warn('[OrderExecutionService] Could not resolve internal ID to Hyperliquid ID for cancellation');
-            // If it's temp, we can't cancel on exchange implies it never made it?
-            // Test assumes success = true or failure.
-            // If we assume it failed to place on HL, we just mark DB cancelled?
-            // But test assumes we placed it.
          }
       }
 
       console.log('[OrderExecutionService] Canceling order:', { hlOrderId, symbol });
 
       // Cancel order on Hyperliquid
-      const result = await this.hlClient.cancelOrder({
-        coin: symbol,
-        o: parseInt(hlOrderId),
-      });
+      const result = await this.hlClient.cancelOrder(hlOrderId, symbol);
 
       if (result.status === 'err') {
         throw new Error(`Order cancellation failed: ${result.response}`);
@@ -614,11 +606,11 @@ export class OrderExecutionService {
         symbol: fill.coin,
         side: fill.side === 'B' ? 'buy' : 'sell',
         price: fill.px,
-        quantity: fill.sz,
+        size: fill.sz,
         fee: fill.fee,
         feeToken: fill.feeToken || 'USDC',
-        liquidation: fill.liquidation || false,
-        timestamp: new Date(fill.time),
+        // liquidation: fill.liquidation || false, // 'liquidation' might not be in schema? Checking...
+        metadata: { liquidation: fill.liquidation, timestamp: fill.time }, // Mapping extra fields to metadata
         createdAt: new Date(),
       });
 
@@ -644,8 +636,8 @@ export class OrderExecutionService {
           await db
             .update(hyperliquidOrders)
             .set({
-              filledQuantity: newFilled.toString(),
-              remainingQuantity: (totalSize - newFilled).toString(),
+              filledSize: newFilled.toString(),
+              remainingSize: (totalSize - newFilled).toString(),
               status: newFilled >= totalSize ? 'filled' : 'partially_filled',
               updatedAt: new Date(),
             })
