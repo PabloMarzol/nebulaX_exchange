@@ -1,4 +1,4 @@
-import { Route, Switch } from 'wouter';
+import { Route, Switch, useLocation } from 'wouter';
 import { AppShell } from './components/layout/AppShell';
 
 // Pages
@@ -9,8 +9,11 @@ import { PortfolioPage } from './pages/PortfolioPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function Router() {
+  const [location] = useLocation();
+  const isHomePage = location === '/';
+
   return (
-    <AppShell>
+    <AppShell fullWidth={isHomePage}>
       <Switch>
         <Route path="/" component={HomePage} />
         <Route path="/trading" component={TradingPage} />
