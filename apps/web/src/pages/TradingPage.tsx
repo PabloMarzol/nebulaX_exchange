@@ -15,18 +15,18 @@ export function TradingPage() {
   const currentPrice = prices?.[selectedSymbol] ? parseFloat(prices[selectedSymbol]) : undefined;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] p-4 gap-4">
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-zinc-950">
       {/* Header with Market Selector */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800">
         <MarketSelector value={selectedSymbol} onChange={setSelectedSymbol} />
       </div>
 
       {/* Main Trading Layout */}
-      <div className="flex-1 grid grid-cols-12 gap-4 min-h-0">
+      <div className="flex-1 grid grid-cols-12 gap-2 min-h-0 p-0">
         {/* Left: Chart + Bottom Panels */}
-        <div className="col-span-9 flex flex-col gap-4 min-h-0">
+        <div className="col-span-9 flex flex-col gap-1 min-h-0">
           {/* Trading Chart */}
-          <div className="flex-[2] min-h-0">
+          <div className="flex-[2] min-h-10 rounded-sm overflow-hidden border border-zinc-900">
             <TradingChart symbol={selectedSymbol} />
           </div>
 
@@ -58,9 +58,9 @@ export function TradingPage() {
         </div>
 
         {/* Right: Orderbook + Order Form */}
-        <div className="col-span-3 flex flex-col gap-4 min-h-0">
+        <div className="col-span-3 flex flex-col gap-2 min-h-100">
           {/* Orderbook */}
-          <div className="flex-1 min-h-0">
+          <div className="flex-0 min-h-10 rounded-sm overflow-hidden">
             <Orderbook symbol={selectedSymbol} />
           </div>
 
