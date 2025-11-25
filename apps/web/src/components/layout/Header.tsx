@@ -99,6 +99,7 @@ export function Header() {
               </Button>
             )}
           </div>
+        </div>
       </div>
     </header>
   );
