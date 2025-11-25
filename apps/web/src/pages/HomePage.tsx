@@ -123,10 +123,10 @@ export function HomePage() {
 
               {/* Main Heading */}
               <div className="space-y-6">
-                <h1 className="text-7xl lg:text-9xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-gradient leading-none">
+                <h1 className="text-5xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-gradient leading-none">
                   Nebula X
                 </h1>
-                <p className="text-4xl lg:text-6xl font-semibold text-foreground/90 leading-tight">
+                <p className="text-3xl lg:text-5xl font-semibold text-foreground/90 leading-tight">
                   Trade Beyond<br />the Stars
                 </p>
               </div>
