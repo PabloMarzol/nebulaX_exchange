@@ -123,8 +123,8 @@ export function HomePage() {
 
               {/* Main Heading */}
               <div className="space-y-6">
-                <h1 className="text-7xl lg:text-9xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-gradient leading-none">
-                  NebulAX
+                <h1 className="text-5xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-gradient leading-none">
+                  Nebula X
                 </h1>
                 <p className="text-4xl lg:text-6xl font-semibold text-foreground/90 leading-tight">
                   Trade Beyond<br />the Stars
@@ -362,7 +362,7 @@ export function HomePage() {
           >
             <h2 className="text-5xl md:text-6xl font-bold">
               Why Choose
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent"> NebulAX</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent"> Nebula X</span>
             </h2>
           </motion.div>
 
@@ -410,7 +410,7 @@ export function HomePage() {
                 Ready to Launch Your Trading Journey?
               </h2>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Join thousands of traders exploring the cryptocurrency cosmos with NebulAX
+                Join thousands of traders exploring the cryptocurrency cosmos with Nebula X
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
