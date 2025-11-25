@@ -23,10 +23,28 @@ export function HomePage() {
 
   // Load UnicornStudio script
   useEffect(() => {
+    console.log('🎨 HomePage mounted, checking UnicornStudio...');
+
     // Check if UnicornStudio is already initialized
     if (window.UnicornStudio && window.UnicornStudio.isInitialized) {
+      console.log('✅ UnicornStudio already initialized');
       return;
     }
+
+    // Check if script already exists
+    const existingScript = document.querySelector('script[src*="unicornstudio"]');
+    if (existingScript) {
+      console.log('⚠️ UnicornStudio script already exists in document');
+      // Try to initialize if not already done
+      if (window.UnicornStudio && !window.UnicornStudio.isInitialized) {
+        console.log('🔄 Initializing existing UnicornStudio');
+        window.UnicornStudio.init();
+        window.UnicornStudio.isInitialized = true;
+      }
+      return;
+    }
+
+    console.log('📥 Loading UnicornStudio script...');
 
     // Create and load the UnicornStudio script
     const script = document.createElement('script');
@@ -34,11 +52,18 @@ export function HomePage() {
     script.async = true;
 
     script.onload = () => {
+      console.log('✅ UnicornStudio script loaded successfully');
       // Initialize UnicornStudio after script loads
       if (window.UnicornStudio && !window.UnicornStudio.isInitialized) {
+        console.log('🚀 Initializing UnicornStudio');
         window.UnicornStudio.init();
         window.UnicornStudio.isInitialized = true;
+        console.log('✨ UnicornStudio initialized successfully');
       }
+    };
+
+    script.onerror = (error) => {
+      console.error('❌ Failed to load UnicornStudio script:', error);
     };
 
     // Append script to document
@@ -46,6 +71,7 @@ export function HomePage() {
 
     // Cleanup function
     return () => {
+      console.log('🧹 Cleaning up UnicornStudio script');
       // Only remove if we added it
       if (script.parentNode) {
         script.parentNode.removeChild(script);
@@ -58,15 +84,22 @@ export function HomePage() {
       {/* UnicornStudio Animated Background - Fixed throughout page */}
       <div
         data-us-project="GE8mpmmCRgK6XBF57jgF"
-        className="fixed w-full h-full left-0 top-0 -z-10"
+        className="fixed w-full h-full left-0 top-0 z-0"
+        style={{
+          width: '100vw',
+          height: '100vh',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+        }}
       />
 
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center px-4">
+      <section className="relative min-h-screen flex items-center justify-center px-4 z-10">
         {/* Gradient Overlays for Nebula Effect */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/50 to-background -z-10" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/30 rounded-full blur-[128px] -z-10" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full blur-[128px] -z-10" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/30 to-background pointer-events-none" style={{ zIndex: -1 }} />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[128px] pointer-events-none" style={{ zIndex: -1 }} />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[128px] pointer-events-none" style={{ zIndex: -1 }} />
 
         <motion.div
           style={{ opacity, scale }}
@@ -163,8 +196,8 @@ export function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section className="relative py-32 px-4">
-        <div className="absolute inset-0 bg-gradient-to-b from-background to-background/50 -z-10" />
+      <section className="relative py-32 px-4 z-10">
+        <div className="absolute inset-0 bg-gradient-to-b from-background to-background/50 pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -213,7 +246,7 @@ export function HomePage() {
       </section>
 
       {/* Technology Section */}
-      <section className="relative py-32 px-4">
+      <section className="relative py-32 px-4 z-10">
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -291,8 +324,8 @@ export function HomePage() {
       </section>
 
       {/* Why Choose Section */}
-      <section className="relative py-32 px-4">
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[200px] -z-10" />
+      <section className="relative py-32 px-4 z-10">
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[200px] pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -336,7 +369,7 @@ export function HomePage() {
       </section>
 
       {/* Final CTA Section */}
-      <section className="relative py-32 px-4">
+      <section className="relative py-32 px-4 z-10">
         <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
