@@ -3,13 +3,16 @@ import { Header } from './Header';
 
 interface AppShellProps {
   children: ReactNode;
+  fullWidth?: boolean;
 }
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, fullWidth = false }: AppShellProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen" style={{ background: fullWidth ? 'transparent' : undefined }}>
       <Header />
-      <main className="flex-1 w-full">{children}</main>
+      <main className={fullWidth ? '' : 'container mx-auto px-4 py-6 bg-background'}>
+        {children}
+      </main>
     </div>
   );
 }
