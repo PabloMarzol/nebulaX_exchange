@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { requestLogger } from './middleware/logging.middleware.js';
-import { apiLimiter } from './middleware/rateLimit.middleware.js';
+import { apiLimiter, authLimiter, tradingLimiter, marketDataLimiter } from './middleware/rateLimit.middleware.js';
 import { MarketDataService } from './services/hyperliquid/MarketDataService.js';
 
 // Routes
@@ -41,21 +41,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
 
-// Rate limiting
-app.use('/api/', apiLimiter);
-
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/trading', tradingRoutes);
-app.use('/api/swap', swapRoutes);
-app.use('/api/market', marketRoutes);
-app.use('/api/portfolio', portfolioRoutes);
-app.use('/api/ai', aiRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/trading', tradingLimiter, tradingRoutes);
+app.use('/api/market', marketDataLimiter, marketRoutes);
+app.use('/api/swap', apiLimiter, swapRoutes);
+app.use('/api/portfolio', apiLimiter, portfolioRoutes);
+app.use('/api/ai', apiLimiter, aiRoutes);
 
 // Initialize MarketDataService
 const marketDataService = MarketDataService.getInstance();

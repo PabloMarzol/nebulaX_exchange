@@ -117,11 +117,21 @@ router.get('/orderbook', async (req: Request, res: Response) => {
 
     const { symbol } = validation.data;
 
-    // Get orderbook from WebSocket cache only
+    // Get orderbook from WebSocket cache
     const cachedOrderbook = marketDataService.getCachedOrderbook(symbol);
+    
+    if (!cachedOrderbook) {
+      const snapshot = await hlClient.getOrderbook(symbol);
+      return res.json({
+        success: true,
+        data: snapshot,
+        cached: false,
+      });
+    }
+
     res.json({
       success: true,
-      data: cachedOrderbook || { levels: [[], []] },
+      data: cachedOrderbook,
       cached: true,
     });
   } catch (error) {
@@ -149,8 +159,32 @@ router.get('/candles', async (req: Request, res: Response) => {
 
     const { symbol, interval } = validation.data;
 
-    // Get candles from WebSocket cache only
+    // Get candles from WebSocket cache
     const cachedCandles = marketDataService.getCachedCandles(symbol, interval);
+    
+    // If cache is empty, fetch snapshot from API
+    if (cachedCandles.length === 0) {
+      const now = Date.now();
+      // Default to 24h of data if no time range provided
+      const start = validation.data.startTime ? parseInt(validation.data.startTime) : now - 24 * 60 * 60 * 1000;
+      const end = validation.data.endTime ? parseInt(validation.data.endTime) : now;
+
+      // Map interval string to Hyperliquid format if needed, but SDK usually handles '1h', '1m' etc.
+      
+      const snapshot = await hlClient.getCandleSnapshot({
+        symbol,
+        interval,
+        startTime: start,
+        endTime: end,
+      });
+
+      return res.json({
+        success: true,
+        data: snapshot,
+        cached: false,
+      });
+    }
+
     res.json({
       success: true,
       data: cachedCandles,

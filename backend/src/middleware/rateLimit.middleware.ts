@@ -21,8 +21,18 @@ export const authLimiter = rateLimit({
 
 export const tradingLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // Limit each IP to 20 trading requests per minute
+  max: 100, // Limit each IP to 100 trading requests per minute
   message: {
     error: 'Too many trading requests, please slow down.',
   },
+});
+
+export const marketDataLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 1000, // Limit each IP to 1000 requests per minute (approx 16 req/sec)
+  message: {
+    error: 'Too many market data requests, please slow down.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });

@@ -40,10 +40,13 @@ export function Orderbook({ symbol }: OrderbookProps) {
 
     if (!dataToProcess || !dataToProcess.levels) return;
 
-    const [askLevels = [], bidLevels = []] = dataToProcess.levels;
+    // Hyperliquid API returns [bids, asks]
+    // levels[0] -> bids (descending)
+    // levels[1] -> asks (ascending)
+    const [rawBids = [], rawAsks = []] = dataToProcess.levels;
 
     // Validate that we have arrays
-    if (!Array.isArray(askLevels) || !Array.isArray(bidLevels)) {
+    if (!Array.isArray(rawBids) || !Array.isArray(rawAsks)) {
       console.warn('[Orderbook] Invalid orderbook data format:', dataToProcess);
       return;
     }
@@ -52,9 +55,17 @@ export function Orderbook({ symbol }: OrderbookProps) {
     const processedAsks: OrderbookLevel[] = [];
     let askTotal = 0;
     try {
-      for (const level of askLevels.slice(0, 15)) {
-        if (!Array.isArray(level) || level.length < 2) continue;
-        const [price, size] = level;
+      for (const level of rawAsks.slice(0, 15)) {
+        let price, size;
+        if (Array.isArray(level) && level.length >= 2) {
+          [price, size] = level;
+        } else if (typeof level === 'object' && level !== null && 'px' in level && 'sz' in level) {
+          price = (level as any).px;
+          size = (level as any).sz;
+        } else {
+          continue;
+        }
+        
         askTotal += parseFloat(size);
         processedAsks.push({
           price,
@@ -70,9 +81,17 @@ export function Orderbook({ symbol }: OrderbookProps) {
     const processedBids: OrderbookLevel[] = [];
     let bidTotal = 0;
     try {
-      for (const level of bidLevels.slice(0, 15)) {
-        if (!Array.isArray(level) || level.length < 2) continue;
-        const [price, size] = level;
+      for (const level of rawBids.slice(0, 15)) {
+        let price, size;
+        if (Array.isArray(level) && level.length >= 2) {
+          [price, size] = level;
+        } else if (typeof level === 'object' && level !== null && 'px' in level && 'sz' in level) {
+          price = (level as any).px;
+          size = (level as any).sz;
+        } else {
+          continue;
+        }
+
         bidTotal += parseFloat(size);
         processedBids.push({
           price,
@@ -98,7 +117,7 @@ export function Orderbook({ symbol }: OrderbookProps) {
     return (
       <div
         key={`${level.price}-${level.size}`}
-        className="relative grid grid-cols-3 gap-2 px-3 py-1 text-sm font-mono hover:bg-zinc-800/50 transition-colors"
+        className="relative grid grid-cols-3 px-2 py-[2px] text-xs font-mono hover:bg-zinc-800/50 transition-colors"
       >
         {/* Depth visualization */}
         <div
@@ -110,7 +129,7 @@ export function Orderbook({ symbol }: OrderbookProps) {
 
         {/* Price */}
         <div
-          className={`relative z-10 ${
+          className={`relative z-10 text-left ${
             isBid ? 'text-green-400' : 'text-red-400'
           }`}
         >
@@ -131,52 +150,59 @@ export function Orderbook({ symbol }: OrderbookProps) {
   };
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Orderbook</CardTitle>
+    <Card className="h-full flex flex-col bg-zinc-950 border-zinc-800">
+      <CardHeader className="pb-2 pt-3 px-3">
+        <CardTitle className="text-sm font-medium text-zinc-200">Orderbook</CardTitle>
       </CardHeader>
 
-      <CardContent className="flex-1 overflow-hidden p-0">
+      <CardContent className="flex-1 overflow-hidden p-0 flex flex-col">
         {/* Column headers */}
-        <div className="grid grid-cols-3 gap-2 px-3 py-2 text-xs font-semibold text-zinc-400 border-b border-zinc-800">
-          <div>Price (USD)</div>
+        <div className="grid grid-cols-3 px-2 py-1 text-[11px] font-medium text-zinc-500 mb-1">
+          <div className="text-left">Price (USD)</div>
           <div className="text-right">Size</div>
           <div className="text-right">Total</div>
         </div>
 
         {/* Asks */}
-        <div className="overflow-y-auto max-h-[calc(50%-2rem)]">
-          {asks.length > 0 ? (
-            asks.map((level) => renderOrderbookRow(level, false))
-          ) : (
-            <div className="px-3 py-8 text-center text-sm text-zinc-500">
-              No asks available
-            </div>
-          )}
+        <div className="flex-1 overflow-hidden flex flex-col justify-end">
+          <div className="overflow-y-auto scrollbar-hide">
+            {asks.length > 0 ? (
+              asks.map((level) => renderOrderbookRow(level, false))
+            ) : (
+              <div className="px-3 py-4 text-center text-xs text-zinc-600">
+                No asks
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Spread */}
         {asks.length > 0 && bids.length > 0 && (
-          <div className="px-3 py-2 text-center bg-zinc-900 border-y border-zinc-800">
-            <div className="text-xs text-zinc-500">Spread</div>
-            <div className="text-sm font-mono text-zinc-300">
+          <div className="px-3 py-1 my-1 text-center bg-zinc-900/50 border-y border-zinc-800/50 flex justify-between items-center">
+            <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Spread</div>
+            <div className="text-xs font-mono text-zinc-300">
               {formatNumber(
                 parseFloat(asks[asks.length - 1].price) - parseFloat(bids[0].price),
                 2
-              )}
+              )} 
+              <span className="text-zinc-600 ml-1 text-[10px]">
+                ({((parseFloat(asks[asks.length - 1].price) - parseFloat(bids[0].price)) / parseFloat(bids[0].price) * 100).toFixed(3)}%)
+              </span>
             </div>
           </div>
         )}
 
         {/* Bids */}
-        <div className="overflow-y-auto max-h-[calc(50%-2rem)]">
-          {bids.length > 0 ? (
-            bids.map((level) => renderOrderbookRow(level, true))
-          ) : (
-            <div className="px-3 py-8 text-center text-sm text-zinc-500">
-              No bids available
-            </div>
-          )}
+        <div className="flex-1 overflow-hidden">
+          <div className="overflow-y-auto scrollbar-hide h-full">
+            {bids.length > 0 ? (
+              bids.map((level) => renderOrderbookRow(level, true))
+            ) : (
+              <div className="px-3 py-4 text-center text-xs text-zinc-600">
+                No bids
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

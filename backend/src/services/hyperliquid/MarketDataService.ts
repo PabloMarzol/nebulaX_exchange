@@ -72,18 +72,24 @@ export class MarketDataService extends EventEmitter {
     try {
       // Subscribe to Hyperliquid WebSocket
       await this.hlClient.subscribeToOrderbook(symbol, (data) => {
+        // Normalize data structure (handle if wrapped in event)
+        let orderbookData = data;
+        if (data && !data.levels && data.data && data.data.levels) {
+          orderbookData = data.data;
+        }
+
         // Cache the orderbook data
-        this.cache.orderbooks.set(symbol, data);
+        this.cache.orderbooks.set(symbol, orderbookData);
 
         // Relay to Socket.io clients
         this.io?.to(`market:${symbol}`).emit('orderbook:update', {
           symbol,
-          data,
+          data: orderbookData,
           timestamp: Date.now(),
         });
 
         // Emit internal event
-        this.emit('orderbook', { symbol, data });
+        this.emit('orderbook', { symbol, data: orderbookData });
       });
 
       this.subscriptions.add(subKey);

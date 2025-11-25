@@ -165,6 +165,19 @@ export class OrderExecutionService {
       const orderData = result.response.data?.statuses?.[0];
       let internalOrderId = `temp-${Date.now()}`;
       
+      // Validate if order was successful
+      if (orderData?.error) {
+        throw new Error(`Order failed: ${orderData.error}`);
+      }
+
+      // Determine actual status. If not resting, assume filled immediately (e.g. Market/IOC)
+      // Note: Accurate fill details usually come via WebSocket 'user' events.
+      // Here we optimistically mark as filled if it didn't rest to allow UI to show progress.
+      const isResting = !!orderData?.resting;
+      const initialStatus = isResting ? 'open' : 'filled';
+      const initialFilled = isResting ? '0' : quantity.toString();
+      const initialRemaining = isResting ? quantity.toString() : '0';
+
       if (orderData && db) {
         try {
           const [insertedOrder] = await db.insert(hyperliquidOrders).values({
@@ -176,9 +189,9 @@ export class OrderExecutionService {
             orderType: type,
             price: price?.toString() || null,
             size: quantity.toString(),
-            filledSize: '0',
-            remainingSize: quantity.toString(),
-            status: 'open',
+            filledSize: initialFilled,
+            remainingSize: initialRemaining,
+            status: initialStatus,
             timeInForce: timeInForce || 'Gtc',
             reduceOnly: reduceOnly || false,
             postOnly: postOnly || false,
@@ -254,7 +267,7 @@ export class OrderExecutionService {
         
       return orders.map(o => ({
         ...o,
-        orderType: o.type,
+        type: o.orderType, // Map DB 'orderType' to frontend 'type'
       }));
     } catch (error) {
        console.error('[OrderExecutionService] Failed to get user orders:', error);
@@ -280,6 +293,8 @@ export class OrderExecutionService {
         .orderBy(desc(hyperliquidOrders.createdAt));
         
       return orders.map(o => ({
+        ...o,
+        type: o.orderType, // Map DB 'orderType' to frontend 'type'
         internalOrderId: o.id,
         symbol: o.symbol,
         side: o.side,
@@ -439,7 +454,11 @@ export class OrderExecutionService {
         )
         .orderBy(desc(hyperliquidOrders.createdAt));
 
-      return openOrders;
+      // Map 'orderType' to 'type' for frontend compatibility
+      return openOrders.map(o => ({
+        ...o,
+        type: o.orderType
+      }));
     } catch (error) {
       console.error('[OrderExecutionService] Failed to get open orders:', error);
       return [];
@@ -472,7 +491,11 @@ export class OrderExecutionService {
         .orderBy(desc(hyperliquidOrders.createdAt))
         .limit(limit);
 
-      return orders;
+      // Map 'orderType' to 'type' for frontend compatibility
+      return orders.map(o => ({
+        ...o,
+        type: o.orderType
+      }));
     } catch (error) {
       console.error('[OrderExecutionService] Failed to get order history:', error);
       return [];
@@ -482,10 +505,12 @@ export class OrderExecutionService {
   /**
    * Get user's positions
    */
-  public async getPositions(userId: string, symbol?: string): Promise<any[]> {
+  public async getPositions(userId: string, symbol?: string, userAddress?: string): Promise<any[]> {
     try {
       // First, try to get from Hyperliquid API
-      const userState = await this.hlClient.getClearinghouseState(userId); // Warning: userId here might need to be address?
+      // Use userAddress if provided, otherwise try userId (if strict UUID, this might fail for HL API which expects address)
+      const targetUser = userAddress || userId;
+      const userState = await this.hlClient.getClearinghouseState(targetUser);
       // hlClient.getClearinghouseState expects address usually. 
       // If userId is uuid, this might fail calling API unless mapped.
       // But test uses uuid for userId and address for userAddress.

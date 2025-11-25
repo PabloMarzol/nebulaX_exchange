@@ -232,7 +232,7 @@ export class HyperliquidClient {
   async placeOrder(params: {
     coin: string;
     isBuy: boolean;
-    price: number;
+    price?: number;
     size: number;
     orderType: 'limit' | 'market';
     timeInForce?: 'Gtc' | 'Ioc' | 'Alo';
@@ -241,8 +241,33 @@ export class HyperliquidClient {
     try {
       const { id: assetId, szDecimals } = await this.getAssetInfo(params.coin);
       
+      let effectivePrice = params.price;
+
+      // Handle Market Orders: Calculate aggressive price if not provided
+      if (params.orderType === 'market' && !effectivePrice) {
+        const allMids = await this.getAllMids();
+        const midPrice = parseFloat(allMids[params.coin]);
+        
+        if (!midPrice || isNaN(midPrice)) {
+          throw new Error(`Cannot place market order for ${params.coin}: price unavailable`);
+        }
+
+        // Apply 5% slippage allowance for market orders
+        const SLIPPAGE = 0.05;
+        effectivePrice = params.isBuy 
+          ? midPrice * (1 + SLIPPAGE)
+          : midPrice * (1 - SLIPPAGE);
+          
+        // Ensure price doesn't go below 0 for sells
+        if (effectivePrice < 0) effectivePrice = 0;
+      }
+
+      if (effectivePrice === undefined) {
+         throw new Error('Price is required for limit orders');
+      }
+
       // Format price and size according to asset decimals
-      const price = formatPrice(params.price.toString(), szDecimals, true); // assuming perp
+      const price = formatPrice(effectivePrice.toString(), szDecimals, true); // assuming perp
       const size = formatSize(params.size.toString(), szDecimals);
 
       const orderRequest = {

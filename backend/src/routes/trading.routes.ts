@@ -51,8 +51,8 @@ router.post('/orders', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = (req as any).user?.walletAddress;
-    if (!walletAddress) {
+    const user = (req as any).user;
+    if (!user || !user.walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -60,7 +60,8 @@ router.post('/orders', async (req: Request, res: Response) => {
     }
 
     const result = await orderService.placeOrder({
-      userId: walletAddress,
+      userId: user.id,
+      userAddress: user.walletAddress,
       ...validation.data,
     });
 
@@ -88,8 +89,8 @@ router.get('/orders', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = (req as any).user?.walletAddress;
-    if (!walletAddress) {
+    const user = (req as any).user;
+    if (!user || !user.walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -98,7 +99,7 @@ router.get('/orders', async (req: Request, res: Response) => {
 
     const { symbol, limit } = validation.data;
     const orders = await orderService.getOrderHistory(
-      walletAddress,
+      user.id,
       symbol,
       limit ? parseInt(limit) : 100
     );
@@ -130,8 +131,8 @@ router.get('/orders/open', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = (req as any).user?.walletAddress;
-    if (!walletAddress) {
+    const user = (req as any).user;
+    if (!user || !user.walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -139,7 +140,7 @@ router.get('/orders/open', async (req: Request, res: Response) => {
     }
 
     const { symbol } = validation.data;
-    const orders = await orderService.getOpenOrders(walletAddress, symbol);
+    const orders = await orderService.getOpenOrders(user.id, symbol);
 
     res.json({
       success: true,
@@ -168,8 +169,8 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = (req as any).user?.walletAddress;
-    if (!walletAddress) {
+    const user = (req as any).user;
+    if (!user || !user.walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -185,7 +186,8 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
     }
 
     const result = await orderService.cancelOrder({
-      userId: walletAddress,
+      userId: user.id,
+      userAddress: user.walletAddress,
       orderId: validation.data.id,
       symbol,
     });
@@ -206,8 +208,8 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
  */
 router.delete('/orders', async (req: Request, res: Response) => {
   try {
-    const walletAddress = (req as any).user?.walletAddress;
-    if (!walletAddress) {
+    const user = (req as any).user;
+    if (!user || !user.walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
@@ -216,7 +218,7 @@ router.delete('/orders', async (req: Request, res: Response) => {
 
     const { symbol } = req.query;
     const result = await orderService.cancelAllOrders(
-      walletAddress,
+      user.id,
       symbol as string | undefined
     );
 
@@ -274,16 +276,37 @@ router.get('/positions', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = (req as any).user?.walletAddress;
-    if (!walletAddress) {
+    const user = (req as any).user;
+    if (!user || !user.walletAddress) {
       return res.status(401).json({
         success: false,
         error: 'User not authenticated',
       });
     }
 
+    // Note: getPositions signature in OrderExecutionService might expect userId or address 
+    // depending on how it calls API. 
+    // OrderExecutionService.getPositions calls hlClient.getClearinghouseState(userId).
+    // hlClient.getClearinghouseState expects ADDRESS.
+    // So we MUST pass ADDRESS here if the service doesn't handle mapping.
+    // BUT if we pass ADDRESS, the DB operations inside getPositions (inserting positions) 
+    // will use ADDRESS as userId which fails UUID constraint!
+    // 
+    // We need to update OrderExecutionService.getPositions to accept BOTH.
+    // Or pass user.id and let service handle it?
+    // OrderExecutionService.ts: getPositions(userId: string, symbol?: string)
+    // It uses userId for BOTH API call AND DB insert.
+    // This is the core problem.
+    // I need to update OrderExecutionService first to handle this split.
+    
+    // For now, I will leave this route using walletAddress BUT request User ID in service.
+    // Wait, if I pass walletAddress, DB fails.
+    // if I pass UUID, API fails ("invalid address").
+    
+    // I MUST update OrderExecutionService.getPositions signature.
+    
     const { symbol } = validation.data;
-    const positions = await orderService.getPositions(walletAddress, symbol);
+    const positions = await orderService.getPositions(user.id, symbol, user.walletAddress); 
 
     res.json({
       success: true,
