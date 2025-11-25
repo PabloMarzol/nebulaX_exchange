@@ -21,17 +21,43 @@ export function HomePage() {
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8]);
 
-  const [mounted, setMounted] = useState(false);
-
+  // Load UnicornStudio script
   useEffect(() => {
-    setMounted(true);
+    // Check if UnicornStudio is already initialized
+    if (window.UnicornStudio && window.UnicornStudio.isInitialized) {
+      return;
+    }
+
+    // Create and load the UnicornStudio script
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.33/dist/unicornStudio.umd.js';
+    script.async = true;
+
+    script.onload = () => {
+      // Initialize UnicornStudio after script loads
+      if (window.UnicornStudio && !window.UnicornStudio.isInitialized) {
+        window.UnicornStudio.init();
+        window.UnicornStudio.isInitialized = true;
+      }
+    };
+
+    // Append script to document
+    (document.head || document.body).appendChild(script);
+
+    // Cleanup function
+    return () => {
+      // Only remove if we added it
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
   }, []);
 
   return (
     <div className="relative overflow-hidden">
       {/* UnicornStudio Animated Background - Fixed throughout page */}
       <div
-        data-us-project="hk4GkXoEfSX9qZozoFL6"
+        data-us-project="GE8mpmmCRgK6XBF57jgF"
         className="fixed w-full h-full left-0 top-0 -z-10"
       />
 
@@ -348,18 +374,6 @@ export function HomePage() {
           </motion.div>
         </div>
       </section>
-
-      {/* UnicornStudio Script */}
-      {mounted && (
-        <script
-          type="text/javascript"
-          dangerouslySetInnerHTML={{
-            __html: `
-              !function(){if(!window.UnicornStudio){window.UnicornStudio={isInitialized:!1};var i=document.createElement("script");i.src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.31/dist/unicornStudio.umd.js",i.onload=function(){window.UnicornStudio.isInitialized||(UnicornStudio.init(),window.UnicornStudio.isInitialized=!0)},(document.head || document.body).appendChild(i)}}();
-            `
-          }}
-        />
-      )}
     </div>
   );
 }
