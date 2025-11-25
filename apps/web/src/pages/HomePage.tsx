@@ -95,88 +95,113 @@ export function HomePage() {
       />
 
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center px-4 z-10">
-        {/* Gradient Overlays for Nebula Effect */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/30 to-background pointer-events-none" style={{ zIndex: -1 }} />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[128px] pointer-events-none" style={{ zIndex: -1 }} />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[128px] pointer-events-none" style={{ zIndex: -1 }} />
+      <section className="relative min-h-screen flex items-center px-4 z-10">
+        {/* Subtle Gradient Overlays for Nebula Effect - More transparent */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/10 to-background/50 pointer-events-none" style={{ zIndex: -1 }} />
+        <div className="absolute top-1/4 -left-20 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[150px] pointer-events-none" style={{ zIndex: -1 }} />
+        <div className="absolute bottom-1/4 -right-20 w-[500px] h-[500px] bg-accent/8 rounded-full blur-[120px] pointer-events-none" style={{ zIndex: -1 }} />
 
-        <motion.div
-          style={{ opacity, scale }}
-          className="text-center max-w-5xl mx-auto space-y-8 py-20"
-        >
-          {/* Floating Badge */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/50 bg-primary/10 backdrop-blur-sm"
-          >
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm text-primary">Powered by Decentralized Technology</span>
-          </motion.div>
+        <div className="max-w-7xl mx-auto w-full py-20">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            {/* Left Column - Branding */}
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8 }}
+              className="space-y-8"
+            >
+              {/* Floating Badge */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/50 bg-primary/10 backdrop-blur-sm"
+              >
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-sm text-primary">Powered by Decentralized Technology</span>
+              </motion.div>
 
-          {/* Main Heading */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="space-y-6"
-          >
-            <h1 className="text-6xl md:text-8xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-gradient">
-              NebulAX
-            </h1>
-            <p className="text-3xl md:text-5xl font-semibold text-foreground/90">
-              Trade Beyond the Stars
-            </p>
-            <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              Experience the future of decentralized trading with AI-powered insights,
-              lightning-fast execution, and cosmic-level security
-            </p>
-          </motion.div>
+              {/* Main Heading */}
+              <div className="space-y-6">
+                <h1 className="text-7xl lg:text-9xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-gradient leading-none">
+                  NebulAX
+                </h1>
+                <p className="text-4xl lg:text-6xl font-semibold text-foreground/90 leading-tight">
+                  Trade Beyond<br />the Stars
+                </p>
+              </div>
 
-          {/* CTA Buttons */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8"
-          >
-            <Link href="/trading">
-              <a className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg overflow-hidden transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(167,139,250,0.5)]">
-                <span className="relative z-10 flex items-center gap-2">
-                  Start Trading
-                  <Rocket className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity" />
-              </a>
-            </Link>
-            <button className="px-8 py-4 border-2 border-primary/50 text-foreground rounded-lg font-semibold text-lg backdrop-blur-sm hover:bg-primary/10 transition-all hover:scale-105 hover:border-primary">
-              Explore Features
-            </button>
-          </motion.div>
+              {/* Stats */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.4 }}
+                className="grid grid-cols-3 gap-6 pt-8"
+              >
+                <div className="space-y-1">
+                  <div className="text-2xl lg:text-3xl font-bold text-primary">$2.5B+</div>
+                  <div className="text-xs text-muted-foreground">Volume</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl lg:text-3xl font-bold text-primary">50K+</div>
+                  <div className="text-xs text-muted-foreground">Traders</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-2xl lg:text-3xl font-bold text-primary">0.01%</div>
+                  <div className="text-xs text-muted-foreground">Fees</div>
+                </div>
+              </motion.div>
+            </motion.div>
 
-          {/* Stats */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6 }}
-            className="grid grid-cols-3 gap-8 pt-16 max-w-3xl mx-auto"
-          >
-            <div className="space-y-2">
-              <div className="text-3xl md:text-4xl font-bold text-primary">$2.5B+</div>
-              <div className="text-sm text-muted-foreground">Trading Volume</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-3xl md:text-4xl font-bold text-primary">50K+</div>
-              <div className="text-sm text-muted-foreground">Active Traders</div>
-            </div>
-            <div className="space-y-2">
-              <div className="text-3xl md:text-4xl font-bold text-primary">0.01%</div>
-              <div className="text-sm text-muted-foreground">Trading Fees</div>
-            </div>
-          </motion.div>
-        </motion.div>
+            {/* Right Column - Description & CTAs */}
+            <motion.div
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, delay: 0.3 }}
+              className="space-y-8 lg:pl-8"
+            >
+              {/* Description with Glass Background */}
+              <div className="p-8 rounded-2xl border border-primary/20 bg-background/40 backdrop-blur-md shadow-xl space-y-6">
+                <p className="text-xl lg:text-2xl text-foreground/90 leading-relaxed">
+                  Experience the future of decentralized trading with AI-powered insights,
+                  lightning-fast execution, and cosmic-level security.
+                </p>
+
+                {/* Feature Highlights */}
+                <div className="space-y-3 pt-4">
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <span>Advanced trading tools & real-time analytics</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <span>Multi-chain support with instant settlements</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <span>Bank-grade security & non-custodial trading</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link href="/trading">
+                  <a className="group relative px-8 py-4 bg-primary text-primary-foreground rounded-lg font-semibold text-lg overflow-hidden transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(167,139,250,0.5)] flex items-center justify-center gap-2">
+                    <span className="relative z-10 flex items-center gap-2">
+                      Start Trading
+                      <Rocket className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </a>
+                </Link>
+                <button className="px-8 py-4 border-2 border-primary/50 text-foreground rounded-lg font-semibold text-lg backdrop-blur-sm hover:bg-primary/10 transition-all hover:scale-105 hover:border-primary">
+                  Explore Features
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        </div>
 
         {/* Scroll Indicator */}
         <motion.div
