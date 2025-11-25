@@ -22,11 +22,11 @@ export function TradingPage() {
       </div>
 
       {/* Main Trading Layout */}
-      <div className="flex-1 grid grid-cols-12 gap-2 min-h-0 p-0">
+      <div className="flex-1 grid grid-cols-12 gap-2 min-h-0 p-1">
         {/* Left: Chart + Bottom Panels */}
         <div className="col-span-9 flex flex-col gap-1 min-h-0">
           {/* Trading Chart */}
-          <div className="flex-[2] min-h-10 rounded-sm overflow-hidden border border-zinc-900">
+          <div className="flex-[2] min-h-0 rounded-sm overflow-hidden border border-zinc-900">
             <TradingChart symbol={selectedSymbol} />
           </div>
 

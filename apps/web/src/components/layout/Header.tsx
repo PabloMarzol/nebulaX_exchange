@@ -26,12 +26,11 @@ export function Header() {
   };
 
   return (
-    <header className="border-b border-border">
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
+    <header className="border-b border-border bg-background w-full">
+      <div className="flex h-16 items-center justify-between px-4">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <span className="text-2xl font-bold text-primary">NebulAX</span>
+            <span className="text-2xl font-bold text-primary">NebulaX</span>
           </Link>
 
           {/* Navigation */}
@@ -64,7 +63,6 @@ export function Header() {
               </Button>
             )}
           </div>
-        </div>
       </div>
     </header>
   );
