@@ -49,6 +49,13 @@ export function Header() {
                 <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-primary to-accent group-hover:w-full transition-all duration-300" />
               </a>
             </Link>
+            <Link href="/markets">
+              <a className="relative px-6 py-2 text-base font-medium text-foreground/80 hover:text-foreground transition-colors group">
+                <span className="relative z-10">Markets</span>
+                <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 rounded-lg transition-all duration-300" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-primary to-accent group-hover:w-full transition-all duration-300" />
+              </a>
+            </Link>
             <Link href="/swap">
               <a className="relative px-6 py-2 text-base font-medium text-foreground/80 hover:text-foreground transition-colors group">
                 <span className="relative z-10">Swap</span>
