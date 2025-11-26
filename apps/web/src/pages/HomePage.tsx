@@ -16,11 +16,16 @@ import {
   Wallet
 } from 'lucide-react';
 import { Link } from 'wouter';
+import axios from 'axios';
+import { AboutSection } from '@/components/landing/AboutSection';
 
 export function HomePage() {
   const { scrollYProgress } = useScroll();
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8]);
+
+  // State for asset prices
+  const [assetPrices, setAssetPrices] = useState<Record<string, string>>({});
 
   // Load UnicornStudio script
   useEffect(() => {
@@ -84,6 +89,25 @@ export function HomePage() {
     return () => {
       console.log('🏠 HomePage unmounting, keeping UnicornStudio loaded for next visit');
     };
+  }, []);
+
+  // Fetch asset prices
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const response = await axios.get('/api/market/prices');
+        if (response.data.success) {
+          setAssetPrices(response.data.data);
+        }
+      } catch (error) {
+        console.error('Error fetching asset prices:', error);
+      }
+    };
+
+    fetchPrices();
+    // Refresh prices every 30 seconds
+    const interval = setInterval(fetchPrices, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -227,90 +251,8 @@ export function HomePage() {
         </motion.div>
       </section>
 
-      {/* Quick Swap Widget Section */}
-      <section className="relative py-20 px-4 z-10">
-        <div className="max-w-2xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="relative p-8 rounded-3xl border border-primary/30 bg-gradient-to-br from-background/80 to-background/40 backdrop-blur-xl shadow-2xl"
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 rounded-3xl" />
-
-            <div className="relative space-y-6">
-              <div className="text-center space-y-2">
-                <h2 className="text-3xl font-bold">Quick Swap</h2>
-                <p className="text-muted-foreground">Instantly swap crypto or buy with fiat</p>
-              </div>
-
-              <div className="space-y-4">
-                {/* From Field */}
-                <div className="p-4 rounded-xl bg-background/60 border border-primary/20">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-muted-foreground">From</span>
-                    <span className="text-xs text-muted-foreground">Balance: 0.00</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      className="flex-1 bg-transparent text-2xl font-semibold outline-none"
-                      disabled
-                    />
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                      <span className="font-medium">ETH</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Swap Icon */}
-                <div className="flex justify-center">
-                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
-                    <ArrowRight className="w-5 h-5 text-primary transform rotate-90" />
-                  </div>
-                </div>
-
-                {/* To Field */}
-                <div className="p-4 rounded-xl bg-background/60 border border-primary/20">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-muted-foreground">To</span>
-                    <span className="text-xs text-muted-foreground">Est. receive</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      className="flex-1 bg-transparent text-2xl font-semibold outline-none"
-                      disabled
-                    />
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                      <span className="font-medium">USDC</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CTA Buttons */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <Link href="/swap">
-                    <a className="w-full px-6 py-3 bg-primary text-primary-foreground rounded-lg font-semibold text-center hover:bg-primary/90 transition-all hover:scale-105">
-                      Crypto Swap
-                    </a>
-                  </Link>
-                  <button className="px-6 py-3 border-2 border-primary/50 text-foreground rounded-lg font-semibold hover:bg-primary/10 transition-all hover:scale-105">
-                    Buy with Fiat
-                  </button>
-                </div>
-
-                <p className="text-xs text-center text-muted-foreground">
-                  Powered by 0x Protocol & OnRamp.Money
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
+      {/* About Nebula X Section */}
+      <AboutSection />
 
       {/* Core Features Section */}
       <section className="relative py-32 px-4 z-10">
@@ -441,8 +383,103 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Quick Swap Widget Section */}
+      <section className="relative py-20 px-4 z-10">
+        {/* Add some emerald/green gradient for color variety */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-emerald-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+
+        <div className="max-w-2xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+            className="relative p-8 rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-background/80 to-background/40 backdrop-blur-xl shadow-2xl"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-accent/5 rounded-3xl" />
+
+            <div className="relative space-y-6">
+              <div className="text-center space-y-2">
+                <h2 className="text-3xl font-bold">
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-primary">
+                    Quick Swap
+                  </span>
+                </h2>
+                <p className="text-muted-foreground">Instantly swap crypto or buy with fiat</p>
+              </div>
+
+              <div className="space-y-4">
+                {/* From Field */}
+                <div className="p-4 rounded-xl bg-background/60 border border-emerald-500/20">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-muted-foreground">From</span>
+                    <span className="text-xs text-muted-foreground">Balance: 0.00</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      className="flex-1 bg-transparent text-2xl font-semibold outline-none"
+                      disabled
+                    />
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <span className="font-medium">ETH</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Swap Icon */}
+                <div className="flex justify-center">
+                  <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <ArrowRight className="w-5 h-5 text-emerald-400 transform rotate-90" />
+                  </div>
+                </div>
+
+                {/* To Field */}
+                <div className="p-4 rounded-xl bg-background/60 border border-emerald-500/20">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-muted-foreground">To</span>
+                    <span className="text-xs text-muted-foreground">Est. receive</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      placeholder="0.00"
+                      className="flex-1 bg-transparent text-2xl font-semibold outline-none"
+                      disabled
+                    />
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <span className="font-medium">USDC</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CTA Buttons */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Link href="/swap">
+                    <a className="w-full px-6 py-3 bg-gradient-to-r from-emerald-500 to-primary text-primary-foreground rounded-lg font-semibold text-center hover:opacity-90 transition-all hover:scale-105">
+                      Crypto Swap
+                    </a>
+                  </Link>
+                  <button className="px-6 py-3 border-2 border-emerald-500/50 text-foreground rounded-lg font-semibold hover:bg-emerald-500/10 transition-all hover:scale-105">
+                    Buy with Fiat
+                  </button>
+                </div>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  Powered by 0x Protocol & OnRamp.Money
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
       {/* Technology Section */}
       <section className="relative py-32 px-4 z-10">
+        {/* Add cyan gradient for color variety */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-cyan-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -453,7 +490,7 @@ export function HomePage() {
           >
             <h2 className="text-5xl md:text-6xl font-bold">
               Built on
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent"> Stellar Tech</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-primary to-accent"> Stellar Tech</span>
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
               Enterprise-grade infrastructure meets cutting-edge blockchain technology
@@ -521,7 +558,9 @@ export function HomePage() {
 
       {/* Why Choose Section */}
       <section className="relative py-32 px-4 z-10">
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[200px] pointer-events-none" style={{ zIndex: -1 }} />
+        {/* Add pink/rose gradient for color variety */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-pink-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-pink-500/10 rounded-full blur-[200px] pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -533,7 +572,7 @@ export function HomePage() {
           >
             <h2 className="text-5xl md:text-6xl font-bold">
               Why Choose
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent"> Nebula X</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-pink-400 via-primary to-accent"> Nebula X</span>
             </h2>
           </motion.div>
 
@@ -623,6 +662,9 @@ export function HomePage() {
 
       {/* Supported Cryptocurrencies Section */}
       <section className="relative py-32 px-4 z-10">
+        {/* Add orange gradient for color variety */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-orange-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -633,36 +675,70 @@ export function HomePage() {
           >
             <h2 className="text-5xl md:text-6xl font-bold">
               Supported{' '}
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-orange-400 via-primary to-accent">
                 Assets & Networks
               </span>
             </h2>
             <p className="text-xl text-muted-foreground">
-              Trade across multiple blockchains with the tokens you love
+              Trade across multiple blockchains with real-time prices
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-            {['ETH', 'BTC', 'USDC', 'USDT', 'ARB', 'OP', 'MATIC', 'BNB', 'AVAX', 'SOL', 'LINK', 'UNI'].map((token, index) => (
-              <motion.div
-                key={token}
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.3, delay: index * 0.05 }}
-                className="aspect-square p-6 rounded-2xl border border-primary/20 bg-card/30 backdrop-blur-sm flex items-center justify-center hover:border-primary/50 hover:bg-card/50 transition-all group"
-              >
-                <span className="text-2xl font-bold text-foreground/80 group-hover:text-primary transition-colors">
-                  {token}
-                </span>
-              </motion.div>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {['ETH', 'BTC', 'USDC', 'USDT', 'ARB', 'OP', 'MATIC', 'BNB', 'AVAX', 'SOL', 'LINK', 'UNI'].map((token, index) => {
+              const price = assetPrices[token];
+              const colorClasses = [
+                'border-orange-500/30 hover:border-orange-500/50 bg-gradient-to-br from-orange-500/5 to-card/30',
+                'border-cyan-500/30 hover:border-cyan-500/50 bg-gradient-to-br from-cyan-500/5 to-card/30',
+                'border-emerald-500/30 hover:border-emerald-500/50 bg-gradient-to-br from-emerald-500/5 to-card/30',
+                'border-purple-500/30 hover:border-purple-500/50 bg-gradient-to-br from-purple-500/5 to-card/30',
+                'border-pink-500/30 hover:border-pink-500/50 bg-gradient-to-br from-pink-500/5 to-card/30',
+                'border-blue-500/30 hover:border-blue-500/50 bg-gradient-to-br from-blue-500/5 to-card/30',
+              ];
+              const colorClass = colorClasses[index % colorClasses.length];
+
+              return (
+                <motion.div
+                  key={token}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                  className={`p-6 rounded-2xl border ${colorClass} backdrop-blur-sm hover:scale-105 transition-all group cursor-pointer`}
+                >
+                  <div className="flex flex-col items-center justify-center space-y-3">
+                    <span className="text-2xl font-bold text-foreground">
+                      {token}
+                    </span>
+                    {price ? (
+                      <div className="text-center">
+                        <div className="text-lg font-semibold text-foreground/90">
+                          ${parseFloat(price).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: price.includes('.') && parseFloat(price) < 1 ? 4 : 2
+                          })}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Live Price</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Loading...</div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
 
-          <div className="mt-12 text-center">
+          <div className="mt-12 text-center space-y-6">
             <p className="text-muted-foreground">
               Supporting Ethereum, Arbitrum, Optimism, Polygon, BSC, Avalanche, Solana and more...
             </p>
+            <Link href="/markets">
+              <a className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-orange-500 to-primary text-primary-foreground rounded-lg font-semibold text-lg hover:opacity-90 transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(249,115,22,0.4)]">
+                View All Markets
+                <ArrowRight className="w-5 h-5" />
+              </a>
+            </Link>
           </div>
         </div>
       </section>
