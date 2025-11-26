@@ -160,57 +160,137 @@ export function AboutSection() {
           </div>
         </div>
 
-        {/* Visual Cards Grid - 4 cards */}
+        {/* Visual Cards Grid - 4 cards with enhanced animations */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
-          {/* Live Trading Charts */}
-          <div className="aspect-square p-6 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group">
-            <div className="mb-3 opacity-60">
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                className="text-emerald-400 group-hover:scale-110 transition-transform">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          {/* Live Trading Charts with animated candlesticks */}
+          <div className="aspect-square p-4 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group overflow-hidden relative">
+            <div className="mb-2">
+              <svg width="80" height="60" viewBox="0 0 80 60" className="opacity-70">
+                {/* Animated Candlesticks */}
+                <rect x="8" y="25" width="8" height="15" fill="#10b981" opacity="0.8">
+                  <animate attributeName="height" values="15;20;15" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="y" values="25;20;25" dur="2s" repeatCount="indefinite" />
+                </rect>
+                <line x1="12" y1="15" x2="12" y2="45" stroke="#10b981" strokeWidth="1.5" opacity="0.6" />
+
+                <rect x="24" y="20" width="8" height="25" fill="#ef4444" opacity="0.8">
+                  <animate attributeName="height" values="25;18;25" dur="2.3s" repeatCount="indefinite" />
+                  <animate attributeName="y" values="20;27;20" dur="2.3s" repeatCount="indefinite" />
+                </rect>
+                <line x1="28" y1="10" x2="28" y2="48" stroke="#ef4444" strokeWidth="1.5" opacity="0.6" />
+
+                <rect x="40" y="18" width="8" height="28" fill="#10b981" opacity="0.8">
+                  <animate attributeName="height" values="28;22;28" dur="1.8s" repeatCount="indefinite" />
+                  <animate attributeName="y" values="18;24;18" dur="1.8s" repeatCount="indefinite" />
+                </rect>
+                <line x1="44" y1="8" x2="44" y2="50" stroke="#10b981" strokeWidth="1.5" opacity="0.6" />
+
+                <rect x="56" y="22" width="8" height="20" fill="#10b981" opacity="0.8">
+                  <animate attributeName="height" values="20;26;20" dur="2.5s" repeatCount="indefinite" />
+                  <animate attributeName="y" values="22;16;22" dur="2.5s" repeatCount="indefinite" />
+                </rect>
+                <line x1="60" y1="12" x2="60" y2="46" stroke="#10b981" strokeWidth="1.5" opacity="0.6" />
               </svg>
             </div>
             <span className="text-sm font-semibold text-center text-emerald-100">Live Trading Charts</span>
           </div>
 
-          {/* Real-time Analytics */}
-          <div className="aspect-square p-6 rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group">
-            <div className="mb-3 opacity-60">
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                className="text-cyan-400 group-hover:scale-110 transition-transform">
-                <path d="M3 3v16a2 2 0 0 0 2 2h16"></path>
-                <path d="M18 17V9"></path>
-                <path d="M13 17V5"></path>
-                <path d="M8 17v-3"></path>
+          {/* Real-time Analytics with animated pie chart */}
+          <div className="aspect-square p-4 rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group overflow-hidden relative">
+            <div className="mb-2">
+              <svg width="60" height="60" viewBox="0 0 60 60" className="opacity-70">
+                <circle cx="30" cy="30" r="25" fill="none" stroke="#0891b2" strokeWidth="8" strokeDasharray="50 107" opacity="0.4">
+                  <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="8s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="30" cy="30" r="25" fill="none" stroke="#06b6d4" strokeWidth="8" strokeDasharray="40 117" strokeDashoffset="-50" opacity="0.6">
+                  <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="10s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="30" cy="30" r="25" fill="none" stroke="#22d3ee" strokeWidth="8" strokeDasharray="35 122" strokeDashoffset="-90" opacity="0.8">
+                  <animateTransform attributeName="transform" type="rotate" from="0 30 30" to="360 30 30" dur="12s" repeatCount="indefinite" />
+                </circle>
+                {/* Center dot */}
+                <circle cx="30" cy="30" r="8" fill="#0891b2" opacity="0.6">
+                  <animate attributeName="r" values="8;10;8" dur="2s" repeatCount="indefinite" />
+                </circle>
               </svg>
             </div>
             <span className="text-sm font-semibold text-center text-cyan-100">Real-time Analytics</span>
           </div>
 
-          {/* Quantum Security */}
-          <div className="aspect-square p-6 rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group">
-            <div className="mb-3 opacity-60">
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                className="text-purple-400 group-hover:scale-110 transition-transform">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"></path>
-                <path d="m9 12 2 2 4-4"></path>
+          {/* Quantum Security with particle effects */}
+          <div className="aspect-square p-4 rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group overflow-hidden relative">
+            <div className="mb-2 relative">
+              <svg width="60" height="60" viewBox="0 0 60 60" className="opacity-70">
+                {/* Central quantum core */}
+                <circle cx="30" cy="30" r="8" fill="none" stroke="#a855f7" strokeWidth="2" opacity="0.8">
+                  <animate attributeName="r" values="8;10;8" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" repeatCount="indefinite" />
+                </circle>
+
+                {/* Orbiting particles */}
+                <circle r="3" fill="#a855f7" opacity="0.8">
+                  <animateMotion dur="3s" repeatCount="indefinite" path="M 30 10 A 20 20 0 1 1 29.9 10" />
+                </circle>
+                <circle r="3" fill="#c084fc" opacity="0.8">
+                  <animateMotion dur="3s" begin="1s" repeatCount="indefinite" path="M 30 10 A 20 20 0 1 1 29.9 10" />
+                </circle>
+                <circle r="3" fill="#e879f9" opacity="0.8">
+                  <animateMotion dur="3s" begin="2s" repeatCount="indefinite" path="M 30 10 A 20 20 0 1 1 29.9 10" />
+                </circle>
+
+                {/* Quantum entanglement lines */}
+                <line x1="30" y1="30" x2="30" y2="10" stroke="#a855f7" strokeWidth="1" opacity="0.3">
+                  <animate attributeName="opacity" values="0.3;0.6;0.3" dur="2s" repeatCount="indefinite" />
+                </line>
               </svg>
             </div>
             <span className="text-sm font-semibold text-center text-purple-100">Quantum Security</span>
           </div>
 
-          {/* Global Network */}
-          <div className="aspect-square p-6 rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group">
-            <div className="mb-3 opacity-60">
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                className="text-orange-400 group-hover:scale-110 transition-transform">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
-                <path d="M2 12h20"></path>
+          {/* Global Network with connection animations */}
+          <div className="aspect-square p-4 rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-500/10 to-card/30 backdrop-blur-sm flex flex-col items-center justify-center hover:scale-105 transition-all group overflow-hidden relative">
+            <div className="mb-2">
+              <svg width="70" height="60" viewBox="0 0 70 60" className="opacity-70">
+                {/* Network nodes */}
+                <circle cx="15" cy="15" r="4" fill="#fb923c" opacity="0.8">
+                  <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="55" cy="15" r="4" fill="#fb923c" opacity="0.8">
+                  <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" begin="0.5s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="15" cy="45" r="4" fill="#fb923c" opacity="0.8">
+                  <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" begin="1s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="55" cy="45" r="4" fill="#fb923c" opacity="0.8">
+                  <animate attributeName="opacity" values="0.8;1;0.8" dur="2s" begin="1.5s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="35" cy="30" r="5" fill="#f97316" opacity="0.9">
+                  <animate attributeName="r" values="5;6;5" dur="2s" repeatCount="indefinite" />
+                </circle>
+
+                {/* Connection lines */}
+                <line x1="15" y1="15" x2="35" y2="30" stroke="#fb923c" strokeWidth="1" opacity="0.4">
+                  <animate attributeName="opacity" values="0.4;0.7;0.4" dur="2s" repeatCount="indefinite" />
+                </line>
+                <line x1="55" y1="15" x2="35" y2="30" stroke="#fb923c" strokeWidth="1" opacity="0.4">
+                  <animate attributeName="opacity" values="0.4;0.7;0.4" dur="2s" begin="0.5s" repeatCount="indefinite" />
+                </line>
+                <line x1="15" y1="45" x2="35" y2="30" stroke="#fb923c" strokeWidth="1" opacity="0.4">
+                  <animate attributeName="opacity" values="0.4;0.7;0.4" dur="2s" begin="1s" repeatCount="indefinite" />
+                </line>
+                <line x1="55" y1="45" x2="35" y2="30" stroke="#fb923c" strokeWidth="1" opacity="0.4">
+                  <animate attributeName="opacity" values="0.4;0.7;0.4" dur="2s" begin="1.5s" repeatCount="indefinite" />
+                </line>
+
+                {/* Data flow particles */}
+                <circle r="2" fill="#fdba74" opacity="0">
+                  <animateMotion dur="2s" repeatCount="indefinite" path="M 15 15 L 35 30" />
+                  <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <circle r="2" fill="#fdba74" opacity="0">
+                  <animateMotion dur="2s" begin="1s" repeatCount="indefinite" path="M 55 15 L 35 30" />
+                  <animate attributeName="opacity" values="0;1;0" dur="2s" begin="1s" repeatCount="indefinite" />
+                </circle>
               </svg>
             </div>
             <span className="text-sm font-semibold text-center text-orange-100">Global Network</span>

@@ -256,7 +256,8 @@ export function HomePage() {
 
       {/* Core Features Section */}
       <section className="relative py-32 px-4 z-10">
-        <div className="absolute inset-0 bg-gradient-to-b from-background to-background/50 pointer-events-none" style={{ zIndex: -1 }} />
+        {/* Smooth dark radial gradient overlay for readability */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.75)_50%,rgba(0,0,0,0.5)_100%)] pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -306,6 +307,9 @@ export function HomePage() {
 
       {/* How It Works Section */}
       <section className="relative py-32 px-4 z-10">
+        {/* Smooth dark gradient overlay for readability */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.75)_50%,rgba(0,0,0,0.5)_100%)] pointer-events-none" style={{ zIndex: -1 }} />
+
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -605,6 +609,9 @@ export function HomePage() {
 
       {/* Security & Compliance Section */}
       <section className="relative py-32 px-4 z-10">
+        {/* Smooth dark gradient overlay for readability */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.75)_50%,rgba(0,0,0,0.5)_100%)] pointer-events-none" style={{ zIndex: -1 }} />
+
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -745,6 +752,9 @@ export function HomePage() {
 
       {/* FAQ Section */}
       <section className="relative py-32 px-4 z-10">
+        {/* Smooth dark gradient overlay for readability */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.85)_0%,rgba(0,0,0,0.75)_50%,rgba(0,0,0,0.5)_100%)] pointer-events-none" style={{ zIndex: -1 }} />
+
         <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -802,6 +812,9 @@ export function HomePage() {
 
       {/* Final CTA Section */}
       <section className="relative py-32 px-4 z-10">
+        {/* Smooth dark gradient overlay for readability */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.8)_0%,rgba(0,0,0,0.7)_50%,rgba(0,0,0,0.5)_100%)] pointer-events-none" style={{ zIndex: -1 }} />
+
         <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
