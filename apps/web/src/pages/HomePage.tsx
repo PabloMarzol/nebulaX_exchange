@@ -12,7 +12,8 @@ import {
   Lock,
   Globe,
   Rocket,
-  Star
+  Star,
+  Wallet
 } from 'lucide-react';
 import { Link } from 'wouter';
 
