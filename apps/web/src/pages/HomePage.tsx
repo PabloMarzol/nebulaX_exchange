@@ -389,8 +389,8 @@ export function HomePage() {
 
       {/* Quick Swap Widget Section */}
       <section className="relative py-20 px-4 z-10">
-        {/* Add some emerald/green gradient for color variety */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-emerald-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+        {/* Keep background visible - very subtle gradient for emerald accent */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-emerald-950/10 to-transparent pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-2xl mx-auto">
           <motion.div
@@ -481,8 +481,8 @@ export function HomePage() {
 
       {/* Technology Section */}
       <section className="relative py-32 px-4 z-10">
-        {/* Add cyan gradient for color variety */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-cyan-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+        {/* Keep background visible with subtle cyan accent */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-950/10 to-transparent pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -562,8 +562,8 @@ export function HomePage() {
 
       {/* Why Choose Section */}
       <section className="relative py-32 px-4 z-10">
-        {/* Add pink/rose gradient for color variety */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-pink-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+        {/* Keep background visible with subtle pink accent */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-pink-950/10 to-transparent pointer-events-none" style={{ zIndex: -1 }} />
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-pink-500/10 rounded-full blur-[200px] pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
@@ -669,8 +669,8 @@ export function HomePage() {
 
       {/* Supported Cryptocurrencies Section */}
       <section className="relative py-32 px-4 z-10">
-        {/* Add orange gradient for color variety */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background via-orange-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+        {/* Fade from dark (previous section) to transparent, then start darkening for FAQ */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-transparent to-black/60 pointer-events-none" style={{ zIndex: -1 }} />
 
         <div className="max-w-7xl mx-auto">
           <motion.div

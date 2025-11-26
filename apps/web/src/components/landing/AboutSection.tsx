@@ -1,8 +1,8 @@
 export function AboutSection() {
   return (
     <section className="relative py-32 px-4 z-10">
-      {/* Gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-blue-950/5 to-background pointer-events-none" style={{ zIndex: -1 }} />
+      {/* Smooth vertical gradient - fade from transparent to dark preparing for next section */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/60 pointer-events-none" style={{ zIndex: -1 }} />
 
       <div className="max-w-7xl mx-auto">
         {/* Header */}
