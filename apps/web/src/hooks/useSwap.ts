@@ -5,7 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 // Hook to get swap quote
 export function useSwapQuote(params: SwapQuoteRequest | null, enabled: boolean = true) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
     queryKey: ['swap-quote', params],
@@ -40,7 +41,8 @@ export function useTokens(chainId: number) {
 export function useTokenAllowance(
   params: { tokenAddress: string; ownerAddress: string; chainId: number } | null
 ) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
     queryKey: ['token-allowance', params],
@@ -61,7 +63,8 @@ export function useTokenAllowance(
 
 // Hook to get swap history
 export function useSwapHistory(limit: number = 10) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
     queryKey: ['swap-history', limit],
@@ -72,7 +75,8 @@ export function useSwapHistory(limit: number = 10) {
 
 // Hook to record swap
 export function useRecordSwap() {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -88,7 +92,8 @@ export function useRecordSwap() {
 
 // Hook to update swap status
 export function useUpdateSwapStatus() {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -104,7 +109,8 @@ export function useUpdateSwapStatus() {
 
 // OnRamp Money hooks
 export function useCreateOnRampOrder() {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -119,7 +125,8 @@ export function useCreateOnRampOrder() {
 }
 
 export function useOnRampOrders(limit: number = 10) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
     queryKey: ['onramp-orders', limit],
@@ -129,7 +136,8 @@ export function useOnRampOrders(limit: number = 10) {
 }
 
 export function useOnRampOrder(orderId: string | null) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
     queryKey: ['onramp-order', orderId],
