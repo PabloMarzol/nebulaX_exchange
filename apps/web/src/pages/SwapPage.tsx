@@ -1,23 +1,65 @@
 import { useState } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Repeat, Coins, History, Sparkles, TrendingUp, Shield, ArrowRight } from 'lucide-react';
+import { Repeat, Coins, History, Sparkles, TrendingUp, Shield, ArrowRight, Wallet } from 'lucide-react';
+import { useAccount } from 'wagmi';
 import { CryptoSwap } from '../components/swap/CryptoSwap';
 import { OnRampWidget } from '../components/swap/OnRampWidget';
 import { AnimatedBackground } from '../components/swap/AnimatedBackground';
 import { useSwapHistory, useOnRampOrders } from '../hooks/useSwap';
 import { Card } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
 
 export function SwapPage() {
   const [activeTab, setActiveTab] = useState('crypto');
   const { data: swapHistory = [] } = useSwapHistory(5);
   const { data: onrampOrders = [] } = useOnRampOrders(5);
+  const { address, isConnected } = useAccount();
+
+  const handleConnect = () => {
+    // Open Web3Modal - using the global modal
+    if (window.w3mModal) {
+      window.w3mModal.open();
+    } else {
+      // Fallback: trigger web component
+      const button = document.querySelector('w3m-button');
+      if (button) {
+        (button as HTMLElement).click();
+      }
+    }
+  };
 
   return (
     <>
       <AnimatedBackground />
 
       <div className="relative z-10 min-h-screen">
+        {/* Wallet Connect Button - Fixed Top Right */}
+        <div className="fixed top-6 right-6 z-50">
+          {isConnected ? (
+            <div className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium text-white hidden sm:inline">
+                {address?.slice(0, 6)}...{address?.slice(-4)}
+              </span>
+              <button
+                onClick={handleConnect}
+                className="p-2 hover:bg-white/10 rounded-lg transition-all"
+              >
+                <Wallet className="w-4 h-4 text-white" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleConnect}
+              className="bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-500 hover:opacity-90 text-white font-semibold px-6 py-3 rounded-2xl shadow-2xl"
+            >
+              <Wallet className="w-5 h-5 mr-2" />
+              Connect Wallet
+            </Button>
+          )}
+        </div>
+
         {/* Hero Section */}
         <section className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
           {/* Top Badge and Title */}

@@ -12,3 +12,11 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Web3Modal global type
+interface Window {
+  w3mModal?: {
+    open: () => void;
+    close: () => void;
+  };
+}
