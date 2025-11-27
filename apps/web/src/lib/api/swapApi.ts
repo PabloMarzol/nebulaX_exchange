@@ -216,6 +216,163 @@ export const swapApi = {
     );
     return response.data.orders;
   },
+
+  // ============================
+  // GASLESS API v2 METHODS
+  // ============================
+
+  // Get indicative gasless price
+  async getGaslessPrice(params: {
+    chainId: number;
+    sellToken: Address;
+    buyToken: Address;
+    sellAmount: string;
+    taker?: Address;
+    slippageBps?: number;
+  }): Promise<any> {
+    const response = await axios.post<{ success: boolean; priceQuote: any }>(
+      `${API_URL}/api/swap/gasless/price`,
+      params
+    );
+    return response.data.priceQuote;
+  },
+
+  // Get firm gasless quote with EIP-712 data
+  async getGaslessQuote(
+    params: {
+      chainId: number;
+      sellToken: Address;
+      buyToken: Address;
+      sellAmount: string;
+      taker: Address;
+      slippageBps?: number;
+      swapFeeRecipient?: Address;
+      swapFeeBps?: number;
+      swapFeeToken?: Address;
+    },
+    token: string
+  ): Promise<any> {
+    const response = await axios.post<{ success: boolean; quote: any }>(
+      `${API_URL}/api/swap/gasless/quote`,
+      params,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.quote;
+  },
+
+  // Submit gasless swap with signatures
+  async submitGaslessSwap(
+    params: {
+      chainId: number;
+      approval?: {
+        type: string;
+        hash: string;
+        eip712: any;
+        signature: {
+          v: number;
+          r: string;
+          s: string;
+          signatureType: number;
+        };
+      };
+      trade: {
+        type: string;
+        hash: string;
+        eip712: any;
+        signature: {
+          v: number;
+          r: string;
+          s: string;
+          signatureType: number;
+        };
+      };
+    },
+    token: string
+  ): Promise<{
+    tradeHash: string;
+    type: string;
+    zid: string;
+  }> {
+    const response = await axios.post<{
+      success: boolean;
+      result: {
+        tradeHash: string;
+        type: string;
+        zid: string;
+      };
+    }>(`${API_URL}/api/swap/gasless/submit`, params, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data.result;
+  },
+
+  // Get gasless swap status
+  async getGaslessStatus(
+    params: {
+      chainId: number;
+      tradeHash: string;
+    },
+    token: string
+  ): Promise<{
+    status: 'pending' | 'submitted' | 'succeeded' | 'confirmed';
+    transactions?: Array<{
+      hash: string;
+      timestamp: number;
+    }>;
+    approvalTransactions?: Array<{
+      hash: string;
+      timestamp: number;
+    }>;
+    zid: string;
+  }> {
+    const response = await axios.get<{
+      success: boolean;
+      status: any;
+    }>(`${API_URL}/api/swap/gasless/status/${params.tradeHash}?chainId=${params.chainId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data.status;
+  },
+
+  // Get tokens that support gasless approvals
+  async getGaslessApprovalTokens(chainId: number): Promise<{
+    tokens: Address[];
+    zid: string;
+  }> {
+    const response = await axios.get<{
+      success: boolean;
+      tokens: Address[];
+      zid: string;
+    }>(`${API_URL}/api/swap/gasless/approval-tokens/${chainId}`);
+    return {
+      tokens: response.data.tokens,
+      zid: response.data.zid,
+    };
+  },
+
+  // Get gasless supported chains
+  async getGaslessChains(): Promise<{
+    chains: Array<{
+      chainId: string;
+      chainName: string;
+    }>;
+    zid: string;
+  }> {
+    const response = await axios.get<{
+      success: boolean;
+      chains: Array<{
+        chainId: string;
+        chainName: string;
+      }>;
+      zid: string;
+    }>(`${API_URL}/api/swap/gasless/chains`);
+    return {
+      chains: response.data.chains,
+      zid: response.data.zid,
+    };
+  },
 };
 
 // OnRamp Money API

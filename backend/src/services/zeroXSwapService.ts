@@ -7,12 +7,42 @@ const ZERO_X_API_BASE = 'https://api.0x.org';
 
 // Chain mapping for 0x API
 const CHAIN_CONFIG = {
-  [mainnet.id]: { chain: mainnet, name: 'ethereum', apiUrl: `${ZERO_X_API_BASE}/swap/v1` },
-  [polygon.id]: { chain: polygon, name: 'polygon', apiUrl: `${ZERO_X_API_BASE}/swap/v1` },
-  [arbitrum.id]: { chain: arbitrum, name: 'arbitrum', apiUrl: `${ZERO_X_API_BASE}/swap/v1` },
-  [bsc.id]: { chain: bsc, name: 'bsc', apiUrl: `${ZERO_X_API_BASE}/swap/v1` },
-  [base.id]: { chain: base, name: 'base', apiUrl: `${ZERO_X_API_BASE}/swap/v1` },
-  [optimism.id]: { chain: optimism, name: 'optimism', apiUrl: `${ZERO_X_API_BASE}/swap/v1` },
+  [mainnet.id]: {
+    chain: mainnet,
+    name: 'ethereum',
+    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
+  },
+  [polygon.id]: {
+    chain: polygon,
+    name: 'polygon',
+    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
+  },
+  [arbitrum.id]: {
+    chain: arbitrum,
+    name: 'arbitrum',
+    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
+  },
+  [bsc.id]: {
+    chain: bsc,
+    name: 'bsc',
+    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
+  },
+  [base.id]: {
+    chain: base,
+    name: 'base',
+    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
+  },
+  [optimism.id]: {
+    chain: optimism,
+    name: 'optimism',
+    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
+  },
 } as const;
 
 export interface SwapQuoteParams {
@@ -285,6 +315,256 @@ export class ZeroXSwapService {
     const slippage = BigInt(Math.floor(slippagePercentage * 10000)); // Convert to basis points
     const minAmount = (amount * (10000n - slippage)) / 10000n;
     return minAmount.toString();
+  }
+
+  // ============================
+  // GASLESS API v2 METHODS
+  // ============================
+
+  /**
+   * Get an indicative price for a gasless swap
+   * This is a read-only version that doesn't require a full quote
+   */
+  async getGaslessPrice(params: {
+    chainId: number;
+    sellToken: Address;
+    buyToken: Address;
+    sellAmount: string;
+    taker?: Address;
+    slippageBps?: number;
+  }): Promise<any> {
+    const { gaslessApiUrl } = this.getChainConfig(params.chainId);
+
+    const queryParams = new URLSearchParams({
+      chainId: params.chainId.toString(),
+      sellToken: params.sellToken,
+      buyToken: params.buyToken,
+      sellAmount: params.sellAmount,
+      ...(params.taker && { taker: params.taker }),
+      ...(params.slippageBps && { slippageBps: params.slippageBps.toString() }),
+    });
+
+    try {
+      const response = await axios.get(`${gaslessApiUrl}/price?${queryParams}`, {
+        headers: {
+          '0x-api-key': env.ZERO_X_API_KEY || '',
+          '0x-version': 'v2',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`0x Gasless API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get a firm quote for a gasless swap
+   * Returns EIP-712 typed data for signing
+   */
+  async getGaslessQuote(params: {
+    chainId: number;
+    sellToken: Address;
+    buyToken: Address;
+    sellAmount: string;
+    taker: Address;
+    slippageBps?: number;
+    swapFeeRecipient?: Address;
+    swapFeeBps?: number;
+    swapFeeToken?: Address;
+  }): Promise<any> {
+    const { gaslessApiUrl } = this.getChainConfig(params.chainId);
+
+    const queryParams = new URLSearchParams({
+      chainId: params.chainId.toString(),
+      sellToken: params.sellToken,
+      buyToken: params.buyToken,
+      sellAmount: params.sellAmount,
+      taker: params.taker,
+      ...(params.slippageBps && { slippageBps: params.slippageBps.toString() }),
+      ...(params.swapFeeRecipient && { swapFeeRecipient: params.swapFeeRecipient }),
+      ...(params.swapFeeBps && { swapFeeBps: params.swapFeeBps.toString() }),
+      ...(params.swapFeeToken && { swapFeeToken: params.swapFeeToken }),
+    });
+
+    try {
+      const response = await axios.get(`${gaslessApiUrl}/quote?${queryParams}`, {
+        headers: {
+          '0x-api-key': env.ZERO_X_API_KEY || '',
+          '0x-version': 'v2',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`0x Gasless API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Submit a gasless swap with signatures
+   * This is called after the user signs the approval and trade EIP-712 data
+   */
+  async submitGaslessSwap(params: {
+    chainId: number;
+    approval?: {
+      type: string;
+      hash: string;
+      eip712: any;
+      signature: {
+        v: number;
+        r: string;
+        s: string;
+        signatureType: number;
+      };
+    };
+    trade: {
+      type: string;
+      hash: string;
+      eip712: any;
+      signature: {
+        v: number;
+        r: string;
+        s: string;
+        signatureType: number;
+      };
+    };
+  }): Promise<{
+    tradeHash: string;
+    type: string;
+    zid: string;
+  }> {
+    const { gaslessApiUrl } = this.getChainConfig(params.chainId);
+
+    try {
+      const response = await axios.post(
+        `${gaslessApiUrl}/submit`,
+        {
+          chainId: params.chainId,
+          ...(params.approval && { approval: params.approval }),
+          trade: params.trade,
+        },
+        {
+          headers: {
+            '0x-api-key': env.ZERO_X_API_KEY || '',
+            '0x-version': 'v2',
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`0x Gasless API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get the status of a gasless swap
+   */
+  async getGaslessStatus(params: {
+    chainId: number;
+    tradeHash: string;
+  }): Promise<{
+    status: 'pending' | 'submitted' | 'succeeded' | 'confirmed';
+    transactions?: Array<{
+      hash: string;
+      timestamp: number;
+    }>;
+    approvalTransactions?: Array<{
+      hash: string;
+      timestamp: number;
+    }>;
+    zid: string;
+  }> {
+    const { gaslessApiUrl } = this.getChainConfig(params.chainId);
+
+    try {
+      const response = await axios.get(
+        `${gaslessApiUrl}/status/${params.tradeHash}?chainId=${params.chainId}`,
+        {
+          headers: {
+            '0x-api-key': env.ZERO_X_API_KEY || '',
+            '0x-version': 'v2',
+          },
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`0x Gasless API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get tokens that support gasless approvals for a specific chain
+   */
+  async getGaslessApprovalTokens(chainId: number): Promise<{
+    tokens: Address[];
+    zid: string;
+  }> {
+    const { gaslessApiUrl } = this.getChainConfig(chainId);
+
+    try {
+      const response = await axios.get(`${gaslessApiUrl}/gasless-approval-tokens?chainId=${chainId}`, {
+        headers: {
+          '0x-api-key': env.ZERO_X_API_KEY || '',
+          '0x-version': 'v2',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`0x Gasless API error: ${message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get list of supported chains for gasless swaps
+   */
+  async getGaslessChains(): Promise<{
+    chains: Array<{
+      chainId: string;
+      chainName: string;
+    }>;
+    zid: string;
+  }> {
+    try {
+      const response = await axios.get(`${ZERO_X_API_BASE}/gasless/chains`, {
+        headers: {
+          '0x-api-key': env.ZERO_X_API_KEY || '',
+          '0x-version': 'v2',
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`0x Gasless API error: ${message}`);
+      }
+      throw error;
+    }
   }
 }
 

@@ -241,6 +241,186 @@ router.get('/history', authenticate, async (req, res, next) => {
 });
 
 // ======================
+// 0x Gasless API v2 Routes
+// ======================
+
+/**
+ * POST /api/swap/gasless/price
+ * Get an indicative price for a gasless swap
+ */
+router.post('/gasless/price', async (req, res, next) => {
+  try {
+    const schema = z.object({
+      chainId: z.number().int().positive(),
+      sellToken: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      buyToken: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      sellAmount: z.string(),
+      taker: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+      slippageBps: z.number().int().min(30).max(10000).optional(),
+    });
+
+    const data = schema.parse(req.body);
+
+    const priceQuote = await zeroXSwapService.getGaslessPrice(data);
+
+    res.json({
+      success: true,
+      priceQuote,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/swap/gasless/quote
+ * Get a firm quote for a gasless swap
+ */
+router.post('/gasless/quote', authenticate, async (req, res, next) => {
+  try {
+    const schema = z.object({
+      chainId: z.number().int().positive(),
+      sellToken: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      buyToken: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      sellAmount: z.string(),
+      taker: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      slippageBps: z.number().int().min(30).max(10000).optional(),
+      swapFeeRecipient: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+      swapFeeBps: z.number().int().min(0).max(10000).optional(),
+      swapFeeToken: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+    });
+
+    const data = schema.parse(req.body);
+
+    const quote = await zeroXSwapService.getGaslessQuote(data);
+
+    res.json({
+      success: true,
+      quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/swap/gasless/submit
+ * Submit a gasless swap with signatures
+ */
+router.post('/gasless/submit', authenticate, async (req, res, next) => {
+  try {
+    const signatureSchema = z.object({
+      v: z.number(),
+      r: z.string(),
+      s: z.string(),
+      signatureType: z.number(),
+    });
+
+    const schema = z.object({
+      chainId: z.number().int().positive(),
+      approval: z
+        .object({
+          type: z.string(),
+          hash: z.string(),
+          eip712: z.any(),
+          signature: signatureSchema,
+        })
+        .optional(),
+      trade: z.object({
+        type: z.string(),
+        hash: z.string(),
+        eip712: z.any(),
+        signature: signatureSchema,
+      }),
+    });
+
+    const data = schema.parse(req.body);
+
+    const result = await zeroXSwapService.submitGaslessSwap(data);
+
+    res.json({
+      success: true,
+      result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/swap/gasless/status/:tradeHash
+ * Get the status of a gasless swap
+ */
+router.get('/gasless/status/:tradeHash', authenticate, async (req, res, next) => {
+  try {
+    const { tradeHash } = req.params;
+    const chainId = parseInt(req.query.chainId as string);
+
+    if (isNaN(chainId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid chain ID',
+      });
+    }
+
+    const status = await zeroXSwapService.getGaslessStatus({
+      chainId,
+      tradeHash,
+    });
+
+    res.json({
+      success: true,
+      status,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/swap/gasless/approval-tokens/:chainId
+ * Get tokens that support gasless approvals
+ */
+router.get('/gasless/approval-tokens/:chainId', async (req, res, next) => {
+  try {
+    const chainId = parseInt(req.params.chainId);
+
+    if (isNaN(chainId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid chain ID',
+      });
+    }
+
+    const result = await zeroXSwapService.getGaslessApprovalTokens(chainId);
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/swap/gasless/chains
+ * Get list of supported chains for gasless swaps
+ */
+router.get('/gasless/chains', async (req, res, next) => {
+  try {
+    const result = await zeroXSwapService.getGaslessChains();
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ======================
 // OnRamp Money Routes
 // ======================
 
