@@ -115,8 +115,8 @@ export function useCreateOnRampOrder() {
 
   return useMutation({
     mutationFn: (data: Parameters<typeof onrampApi.createOrder>[0]) => {
-      if (!token) throw new Error('No auth token');
-      return onrampApi.createOrder(data, token);
+      // No auth required - token is optional
+      return onrampApi.createOrder(data, token || undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['onramp-orders'] });
@@ -124,26 +124,26 @@ export function useCreateOnRampOrder() {
   });
 }
 
-export function useOnRampOrders(limit: number = 10) {
+export function useOnRampOrders(limit: number = 10, walletAddress?: string) {
   const { isAuthenticated } = useAuth();
   const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
-    queryKey: ['onramp-orders', limit],
-    queryFn: () => (token ? onrampApi.getOrders(limit, token) : Promise.reject('No token')),
-    enabled: !!token,
+    queryKey: ['onramp-orders', limit, walletAddress],
+    queryFn: () => onrampApi.getOrders(limit, walletAddress, token || undefined),
+    enabled: !!walletAddress || !!token,
   });
 }
 
-export function useOnRampOrder(orderId: string | null) {
+export function useOnRampOrder(orderId: string | null, walletAddress?: string) {
   const { isAuthenticated } = useAuth();
   const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   return useQuery({
-    queryKey: ['onramp-order', orderId],
+    queryKey: ['onramp-order', orderId, walletAddress],
     queryFn: () =>
-      orderId && token ? onrampApi.getOrder(orderId, token) : Promise.reject('Missing order ID or token'),
-    enabled: !!orderId && !!token,
+      orderId ? onrampApi.getOrder(orderId, walletAddress, token || undefined) : Promise.reject('Missing order ID'),
+    enabled: !!orderId,
   });
 }
 

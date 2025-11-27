@@ -389,35 +389,35 @@ export const onrampApi = {
       phoneNumber?: string;
       language?: string;
     },
-    token: string
+    token?: string
   ): Promise<OnRampOrder> {
     const response = await axios.post<{ success: boolean; order: OnRampOrder }>(
       `${API_URL}/api/swap/onramp/create`,
       data,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       }
     );
     return response.data.order;
   },
 
   // Get order by ID
-  async getOrder(orderId: string, token: string): Promise<OnRampOrder> {
+  async getOrder(orderId: string, walletAddress?: string, token?: string): Promise<OnRampOrder> {
     const response = await axios.get<{ success: boolean; order: OnRampOrder }>(
-      `${API_URL}/api/swap/onramp/order/${orderId}`,
+      `${API_URL}/api/swap/onramp/order/${orderId}${walletAddress ? `?walletAddress=${walletAddress}` : ''}`,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       }
     );
     return response.data.order;
   },
 
   // Get user's orders
-  async getOrders(limit: number = 10, token: string): Promise<OnRampOrder[]> {
+  async getOrders(limit: number = 10, walletAddress?: string, token?: string): Promise<OnRampOrder[]> {
     const response = await axios.get<{ success: boolean; orders: OnRampOrder[] }>(
-      `${API_URL}/api/swap/onramp/orders?limit=${limit}`,
+      `${API_URL}/api/swap/onramp/orders?limit=${limit}${walletAddress ? `&walletAddress=${walletAddress}` : ''}`,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       }
     );
     return response.data.orders;

@@ -427,8 +427,9 @@ router.get('/gasless/chains', async (req, res, next) => {
 /**
  * POST /api/swap/onramp/create
  * Create a new OnRamp Money order
+ * No authentication required - uses wallet address as identifier
  */
-router.post('/onramp/create', authenticate, async (req, res, next) => {
+router.post('/onramp/create', async (req, res, next) => {
   try {
     const schema = z.object({
       fiatAmount: z.number().positive().min(10).max(100000),
@@ -443,8 +444,11 @@ router.post('/onramp/create', authenticate, async (req, res, next) => {
 
     const data = schema.parse(req.body);
 
+    // Use wallet address as userId if not authenticated
+    const userId = (req as any).user?.id || data.walletAddress;
+
     const order = await onrampMoneyService.createOrder({
-      userId: req.user!.id,
+      userId,
       ...data,
     });
 
@@ -495,11 +499,22 @@ router.get('/onramp/callback', async (req, res, next) => {
  * GET /api/swap/onramp/order/:id
  * Get OnRamp Money order by ID
  */
-router.get('/onramp/order/:id', authenticate, async (req, res, next) => {
+router.get('/onramp/order/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const walletAddress = req.query.walletAddress as string;
 
-    const order = await onrampMoneyService.getOrderById(id, req.user!.id);
+    // Use authenticated userId or wallet address
+    const userId = (req as any).user?.id || walletAddress;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Authentication or wallet address required',
+      });
+    }
+
+    const order = await onrampMoneyService.getOrderById(id, userId);
 
     if (!order) {
       return res.status(404).json({
@@ -521,11 +536,22 @@ router.get('/onramp/order/:id', authenticate, async (req, res, next) => {
  * GET /api/swap/onramp/orders
  * Get user's OnRamp Money orders
  */
-router.get('/onramp/orders', authenticate, async (req, res, next) => {
+router.get('/onramp/orders', async (req, res, next) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
+    const walletAddress = req.query.walletAddress as string;
 
-    const orders = await onrampMoneyService.getUserOrders(req.user!.id, limit);
+    // Use authenticated userId or wallet address
+    const userId = (req as any).user?.id || walletAddress;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Authentication or wallet address required',
+      });
+    }
+
+    const orders = await onrampMoneyService.getUserOrders(userId, limit);
 
     res.json({
       success: true,
