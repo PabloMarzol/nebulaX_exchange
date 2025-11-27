@@ -240,6 +240,7 @@ export class ZeroXSwapService {
 
   /**
    * Get supported tokens for a chain
+   * Now uses gasless-approval-tokens endpoint for accurate token list
    */
   async getSupportedTokens(chainId: number): Promise<Array<{
     address: Address;
@@ -248,63 +249,78 @@ export class ZeroXSwapService {
     decimals: number;
     logoURI?: string;
   }>> {
-    const { chain } = this.getChainConfig(chainId);
+    try {
+      // Get tokens that support gasless approvals from 0x API
+      const { tokens: gaslessTokens } = await this.getGaslessApprovalTokens(chainId);
+      const publicClient = this.getPublicClient(chainId);
 
-    // Common tokens across chains
-    const commonTokens = {
-      WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
-      USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-      USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-      DAI: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
-      WBTC: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
-    };
+      // Fetch metadata for each token
+      const tokenMetadata = await Promise.all(
+        gaslessTokens.map(async (address) => {
+          try {
+            // Fetch token metadata using ERC20 ABI
+            const [symbol, name, decimals] = await Promise.all([
+              publicClient.readContract({
+                address,
+                abi: [{ name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }] as const,
+                functionName: 'symbol',
+              }),
+              publicClient.readContract({
+                address,
+                abi: [{ name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }] as const,
+                functionName: 'name',
+              }),
+              publicClient.readContract({
+                address,
+                abi: [{ name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }] as const,
+                functionName: 'decimals',
+              }),
+            ]);
 
-    // Chain-specific token addresses
-    const tokensByChain: Record<number, Record<string, Address>> = {
-      [polygon.id]: {
-        WMATIC: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270' as Address,
-        USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as Address,
-        USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F' as Address,
-        DAI: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063' as Address,
-        WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619' as Address,
-      },
-      [arbitrum.id]: {
-        WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' as Address,
-        USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as Address,
-        USDT: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9' as Address,
-        DAI: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1' as Address,
-        ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548' as Address,
-      },
-      [bsc.id]: {
-        WBNB: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' as Address,
-        USDT: '0x55d398326f99059fF775485246999027B3197955' as Address,
-        USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' as Address,
-        BUSD: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56' as Address,
-        DAI: '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3' as Address,
-      },
-      [base.id]: {
-        WETH: '0x4200000000000000000000000000000000000006' as Address,
-        USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as Address,
-        DAI: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb' as Address,
-      },
-      [optimism.id]: {
-        WETH: '0x4200000000000000000000000000000000000006' as Address,
-        USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607' as Address,
-        USDT: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58' as Address,
-        DAI: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1' as Address,
-        OP: '0x4200000000000000000000000000000000000042' as Address,
-      },
-    };
+            return {
+              address,
+              symbol: symbol as string,
+              name: name as string,
+              decimals: decimals as number,
+              // Use CoinGecko token images instead of 1inch
+              logoURI: `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${address}/logo.png`,
+            };
+          } catch (error) {
+            // If metadata fetch fails, return basic info
+            console.error(`Failed to fetch metadata for token ${address}:`, error);
+            return {
+              address,
+              symbol: 'UNKNOWN',
+              name: 'Unknown Token',
+              decimals: 18,
+            };
+          }
+        })
+      );
 
-    const tokens = tokensByChain[chainId] || commonTokens;
+      return tokenMetadata;
+    } catch (error) {
+      console.error('Failed to fetch gasless tokens, falling back to hardcoded list:', error);
 
-    return Object.entries(tokens).map(([symbol, address]) => ({
-      address,
-      symbol,
-      name: symbol,
-      decimals: symbol.includes('USDC') || symbol.includes('USDT') ? 6 : 18,
-      logoURI: `https://tokens.1inch.io/${address}.png`,
-    }));
+      // Fallback to a minimal set of known tokens if API fails
+      const fallbackTokens: Record<number, Array<{ address: Address; symbol: string; name: string; decimals: number }>> = {
+        [mainnet.id]: [
+          { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+          { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+          { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+        ],
+        [polygon.id]: [
+          { address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', symbol: 'WMATIC', name: 'Wrapped MATIC', decimals: 18 },
+          { address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+        ],
+        [arbitrum.id]: [
+          { address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+          { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+        ],
+      };
+
+      return fallbackTokens[chainId] || fallbackTokens[mainnet.id];
+    }
   }
 
   /**
