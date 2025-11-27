@@ -1,0 +1,283 @@
+import axios from 'axios';
+import type { Address } from 'viem';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+export interface SwapQuoteRequest {
+  sellToken: Address;
+  buyToken: Address;
+  sellAmount?: string;
+  buyAmount?: string;
+  takerAddress: Address;
+  slippagePercentage?: number;
+  chainId: number;
+}
+
+export interface SwapQuote {
+  price: string;
+  guaranteedPrice: string;
+  estimatedPriceImpact: string;
+  to: Address;
+  data: `0x${string}`;
+  value: string;
+  gas: string;
+  estimatedGas: string;
+  gasPrice: string;
+  protocolFee: string;
+  minimumProtocolFee: string;
+  buyAmount: string;
+  sellAmount: string;
+  sources: Array<{ name: string; proportion: string }>;
+  buyTokenAddress: Address;
+  sellTokenAddress: Address;
+  allowanceTarget: Address;
+  sellTokenToEthRate: string;
+  buyTokenToEthRate: string;
+  expectedSlippage: string | null;
+}
+
+export interface PriceQuote {
+  price: string;
+  estimatedPriceImpact: string;
+  buyAmount: string;
+  sellAmount: string;
+  gas: string;
+  sources: Array<{ name: string; proportion: string }>;
+}
+
+export interface Token {
+  address: Address;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoURI?: string;
+}
+
+export interface TokenAllowance {
+  token: Address;
+  spender: Address;
+  owner: Address;
+  allowance: string;
+  needsApproval: boolean;
+}
+
+export interface SwapOrder {
+  id: string;
+  sellToken: string;
+  buyToken: string;
+  sellAmount: string;
+  buyAmount: string;
+  sellTokenSymbol?: string;
+  buyTokenSymbol?: string;
+  chainId: number;
+  price: string;
+  status: 'pending' | 'submitted' | 'confirmed' | 'failed';
+  txHash?: string;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt?: string;
+}
+
+export interface OnRampOrder {
+  id: string;
+  userId: string;
+  fiatAmount: number;
+  fiatCurrency: string;
+  cryptoAmount?: number;
+  cryptoCurrency: string;
+  network: string;
+  walletAddress: string;
+  paymentMethod: number;
+  merchantRecognitionId: string;
+  onrampUrl: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Currency {
+  code: string;
+  name: string;
+  type: number;
+}
+
+export interface CryptoWithNetworks {
+  symbol: string;
+  name: string;
+  networks: Array<{ code: string; name: string }>;
+}
+
+// 0x Protocol Swap API
+export const swapApi = {
+  // Get swap quote
+  async getQuote(params: SwapQuoteRequest, token?: string): Promise<SwapQuote> {
+    const response = await axios.post<{ success: boolean; quote: SwapQuote }>(
+      `${API_URL}/api/swap/quote`,
+      params,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }
+    );
+    return response.data.quote;
+  },
+
+  // Get price quote (lighter)
+  async getPrice(params: Omit<SwapQuoteRequest, 'takerAddress'>): Promise<PriceQuote> {
+    const response = await axios.post<{ success: boolean; price: PriceQuote }>(
+      `${API_URL}/api/swap/price`,
+      params
+    );
+    return response.data.price;
+  },
+
+  // Record swap transaction
+  async recordSwap(
+    data: {
+      sellToken: string;
+      buyToken: string;
+      sellAmount: string;
+      buyAmount: string;
+      sellTokenSymbol?: string;
+      buyTokenSymbol?: string;
+      chainId: number;
+      price: string;
+      guaranteedPrice?: string;
+      slippage?: number;
+      txHash?: string;
+      status?: 'pending' | 'submitted' | 'confirmed' | 'failed';
+    },
+    token: string
+  ): Promise<SwapOrder> {
+    const response = await axios.post<{ success: boolean; order: SwapOrder }>(
+      `${API_URL}/api/swap/record`,
+      data,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.order;
+  },
+
+  // Update swap status
+  async updateSwapStatus(
+    orderId: string,
+    data: {
+      status: 'pending' | 'submitted' | 'confirmed' | 'failed';
+      txHash?: string;
+      error?: string;
+    },
+    token: string
+  ): Promise<SwapOrder> {
+    const response = await axios.patch<{ success: boolean; order: SwapOrder }>(
+      `${API_URL}/api/swap/${orderId}/status`,
+      data,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.order;
+  },
+
+  // Get supported tokens
+  async getTokens(chainId: number): Promise<Token[]> {
+    const response = await axios.get<{ success: boolean; tokens: Token[] }>(
+      `${API_URL}/api/swap/tokens/${chainId}`
+    );
+    return response.data.tokens;
+  },
+
+  // Check token allowance
+  async checkAllowance(
+    params: {
+      tokenAddress: Address;
+      ownerAddress: Address;
+      chainId: number;
+    },
+    token: string
+  ): Promise<TokenAllowance> {
+    const response = await axios.post<{ success: boolean; allowance: TokenAllowance }>(
+      `${API_URL}/api/swap/allowance`,
+      params,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.allowance;
+  },
+
+  // Get swap history
+  async getHistory(limit: number = 10, token: string): Promise<SwapOrder[]> {
+    const response = await axios.get<{ success: boolean; orders: SwapOrder[] }>(
+      `${API_URL}/api/swap/history?limit=${limit}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.orders;
+  },
+};
+
+// OnRamp Money API
+export const onrampApi = {
+  // Create OnRamp order
+  async createOrder(
+    data: {
+      fiatAmount: number;
+      fiatCurrency: string;
+      cryptoCurrency: string;
+      network: string;
+      walletAddress: string;
+      paymentMethod: number;
+      phoneNumber?: string;
+      language?: string;
+    },
+    token: string
+  ): Promise<OnRampOrder> {
+    const response = await axios.post<{ success: boolean; order: OnRampOrder }>(
+      `${API_URL}/api/swap/onramp/create`,
+      data,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.order;
+  },
+
+  // Get order by ID
+  async getOrder(orderId: string, token: string): Promise<OnRampOrder> {
+    const response = await axios.get<{ success: boolean; order: OnRampOrder }>(
+      `${API_URL}/api/swap/onramp/order/${orderId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.order;
+  },
+
+  // Get user's orders
+  async getOrders(limit: number = 10, token: string): Promise<OnRampOrder[]> {
+    const response = await axios.get<{ success: boolean; orders: OnRampOrder[] }>(
+      `${API_URL}/api/swap/onramp/orders?limit=${limit}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    return response.data.orders;
+  },
+
+  // Get supported currencies
+  async getSupportedCurrencies(): Promise<Currency[]> {
+    const response = await axios.get<{ success: boolean; currencies: Currency[] }>(
+      `${API_URL}/api/swap/onramp/currencies`
+    );
+    return response.data.currencies;
+  },
+
+  // Get supported cryptos
+  async getSupportedCryptos(): Promise<CryptoWithNetworks[]> {
+    const response = await axios.get<{ success: boolean; cryptos: CryptoWithNetworks[] }>(
+      `${API_URL}/api/swap/onramp/cryptos`
+    );
+    return response.data.cryptos;
+  },
+};
