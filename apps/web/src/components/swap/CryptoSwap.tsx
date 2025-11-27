@@ -1,13 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ArrowDownUp, Info, Settings, ChevronDown, Loader2, AlertCircle } from 'lucide-react';
-import { useAccount, useChainId, useSignTypedData } from 'wagmi';
+import { ArrowDownUp, Info, Settings, ChevronDown, Loader2, AlertCircle, Wallet } from 'lucide-react';
+import { useAccount, useChainId, useSignTypedData, useBalance } from 'wagmi';
 import { parseUnits, formatUnits, type Address } from 'viem';
+import { mainnet, polygon, arbitrum, bsc, base, optimism } from 'viem/chains';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { TokenSelector } from './TokenSelector';
 import { useTokens } from '../../hooks/useSwap';
 import { swapApi } from '../../lib/api/swapApi';
 import { useAuth } from '../../contexts/AuthContext';
+
+// Chain names mapping
+const CHAIN_NAMES: Record<number, string> = {
+  [mainnet.id]: 'Ethereum',
+  [polygon.id]: 'Polygon',
+  [arbitrum.id]: 'Arbitrum',
+  [bsc.id]: 'BNB Chain',
+  [base.id]: 'Base',
+  [optimism.id]: 'Optimism',
+};
 
 export function CryptoSwap() {
   const { address, isConnected } = useAccount();
@@ -39,6 +50,14 @@ export function CryptoSwap() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [txStatus, setTxStatus] = useState<'idle' | 'signing' | 'submitting' | 'polling' | 'success' | 'error'>('idle');
   const [tradeHash, setTradeHash] = useState<string | null>(null);
+
+  // Get balance for sell token
+  const { data: sellTokenBalance } = useBalance({
+    address,
+    token: sellToken?.address,
+    chainId,
+    enabled: !!sellToken && !!address,
+  });
 
   // Initialize with default tokens
   useEffect(() => {
@@ -101,6 +120,14 @@ export function CryptoSwap() {
     setBuyToken(tempSell);
     setSellAmount('');
     setQuote(null);
+  };
+
+  // Handle max button - set to full balance
+  const handleMaxAmount = () => {
+    if (sellTokenBalance) {
+      const formattedBalance = formatUnits(sellTokenBalance.value, sellToken?.decimals || 18);
+      setSellAmount(formattedBalance);
+    }
   };
 
   // Handle swap execution with gasless flow
@@ -244,6 +271,23 @@ export function CryptoSwap() {
 
   return (
     <div className="space-y-4">
+      {/* Network Display */}
+      <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+          <span className="text-sm font-medium text-white/80">Network:</span>
+          <span className="text-sm font-semibold text-white">{CHAIN_NAMES[chainId] || `Chain ${chainId}`}</span>
+        </div>
+        {address && (
+          <div className="flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-white/60" />
+            <span className="text-sm text-white/60">
+              {address.slice(0, 6)}...{address.slice(-4)}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Settings */}
       {showSettings && (
         <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
@@ -269,7 +313,24 @@ export function CryptoSwap() {
 
       {/* Sell Token */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-white/80">You Pay</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-white/80">You Pay</label>
+          {sellTokenBalance && sellToken && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/60">
+                Balance: {parseFloat(formatUnits(sellTokenBalance.value, sellToken.decimals)).toFixed(6)} {sellToken.symbol}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleMaxAmount}
+                className="h-6 px-2 text-xs text-blue-400 hover:text-blue-300"
+              >
+                MAX
+              </Button>
+            </div>
+          )}
+        </div>
         <div className="relative">
           <Input
             type="number"
