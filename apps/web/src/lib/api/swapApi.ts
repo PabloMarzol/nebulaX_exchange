@@ -1,7 +1,8 @@
 import axios from 'axios';
 import type { Address } from 'viem';
+import { env } from '@/config/env';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = env.apiUrl;
 
 export interface SwapQuoteRequest {
   sellToken: Address;
