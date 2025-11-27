@@ -240,7 +240,7 @@ export class ZeroXSwapService {
 
   /**
    * Get supported tokens for a chain
-   * Now uses gasless-approval-tokens endpoint for accurate token list
+   * Uses gasless-approval-tokens endpoint with static metadata (no RPC calls)
    */
   async getSupportedTokens(chainId: number): Promise<Array<{
     address: Address;
@@ -249,60 +249,73 @@ export class ZeroXSwapService {
     decimals: number;
     logoURI?: string;
   }>> {
+    // Known token metadata database - avoids rate limiting from RPC calls
+    const TOKEN_METADATA: Record<string, { symbol: string; name: string; decimals: number }> = {
+      // Common across chains
+      '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2': { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+      '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48': { symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+      '0xdAC17F958D2ee523a2206206994597C13D831ec7': { symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+      '0x6B175474E89094C44Da98b954EedeAC495271d0F': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
+      '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599': { symbol: 'WBTC', name: 'Wrapped BTC', decimals: 8 },
+      // Polygon
+      '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270': { symbol: 'WMATIC', name: 'Wrapped MATIC', decimals: 18 },
+      '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174': { symbol: 'USDC', name: 'USD Coin (PoS)', decimals: 6 },
+      '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359': { symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+      '0xc2132D05D31c914a87C6611C10748AEb04B58e8F': { symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+      '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
+      '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619': { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+      // Arbitrum
+      '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1': { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+      '0xaf88d065e77c8cC2239327C5EDb3A432268e5831': { symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+      '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8': { symbol: 'USDC.e', name: 'Bridged USDC', decimals: 6 },
+      '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9': { symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+      '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
+      '0x912CE59144191C1204E64559FE8253a0e49E6548': { symbol: 'ARB', name: 'Arbitrum', decimals: 18 },
+      '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f': { symbol: 'WBTC', name: 'Wrapped BTC', decimals: 8 },
+      // BSC
+      '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c': { symbol: 'WBNB', name: 'Wrapped BNB', decimals: 18 },
+      '0x55d398326f99059fF775485246999027B3197955': { symbol: 'USDT', name: 'Tether USD', decimals: 18 },
+      '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d': { symbol: 'USDC', name: 'USD Coin', decimals: 18 },
+      '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56': { symbol: 'BUSD', name: 'Binance USD', decimals: 18 },
+      '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
+      // Base
+      '0x4200000000000000000000000000000000000006': { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+      '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913': { symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+      '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
+      // Optimism
+      '0x7F5c764cBc14f9669B88837ca1490cCa17c31607': { symbol: 'USDC', name: 'USD Coin (Bridged)', decimals: 6 },
+      '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85': { symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+      '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58': { symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+      '0x4200000000000000000000000000000000000042': { symbol: 'OP', name: 'Optimism', decimals: 18 },
+    };
+
     try {
       // Get tokens that support gasless approvals from 0x API
       const { tokens: gaslessTokens } = await this.getGaslessApprovalTokens(chainId);
-      const publicClient = this.getPublicClient(chainId);
 
-      // Fetch metadata for each token
-      const tokenMetadata = await Promise.all(
-        gaslessTokens.map(async (address) => {
-          try {
-            // Fetch token metadata using ERC20 ABI
-            const [symbol, name, decimals] = await Promise.all([
-              publicClient.readContract({
-                address,
-                abi: [{ name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }] as const,
-                functionName: 'symbol',
-              }),
-              publicClient.readContract({
-                address,
-                abi: [{ name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] }] as const,
-                functionName: 'name',
-              }),
-              publicClient.readContract({
-                address,
-                abi: [{ name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }] as const,
-                functionName: 'decimals',
-              }),
-            ]);
+      // Map gasless tokens to known metadata (no blockchain calls)
+      const tokenMetadata = gaslessTokens
+        .map((address) => {
+          const metadata = TOKEN_METADATA[address] || TOKEN_METADATA[address.toLowerCase()];
 
+          if (metadata) {
             return {
               address,
-              symbol: symbol as string,
-              name: name as string,
-              decimals: decimals as number,
-              // Use CoinGecko token images instead of 1inch
+              ...metadata,
               logoURI: `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${address}/logo.png`,
             };
-          } catch (error) {
-            // If metadata fetch fails, return basic info
-            console.error(`Failed to fetch metadata for token ${address}:`, error);
-            return {
-              address,
-              symbol: 'UNKNOWN',
-              name: 'Unknown Token',
-              decimals: 18,
-            };
           }
+
+          // Skip unknown tokens to avoid clutter
+          return null;
         })
-      );
+        .filter((token): token is NonNullable<typeof token> => token !== null);
 
       return tokenMetadata;
     } catch (error) {
-      console.error('Failed to fetch gasless tokens, falling back to hardcoded list:', error);
+      console.error('Failed to fetch gasless tokens, using fallback list:', error);
 
-      // Fallback to a minimal set of known tokens if API fails
+      // Fallback to curated list if API fails
       const fallbackTokens: Record<number, Array<{ address: Address; symbol: string; name: string; decimals: number }>> = {
         [mainnet.id]: [
           { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
