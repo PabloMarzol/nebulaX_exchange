@@ -5,6 +5,7 @@ import { wagmiConfig } from './lib/web3/config';
 import { AuthProvider } from './contexts/AuthContext';
 import { LiveDataProvider } from './contexts/LiveDataContext';
 import { Router } from './Router';
+import './lib/web3/web3modal'; // Initialize Web3Modal
 
 function App() {
   return (

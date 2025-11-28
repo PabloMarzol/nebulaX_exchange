@@ -4,6 +4,7 @@ import { Repeat, Coins, History, Sparkles, TrendingUp, Shield, ArrowRight, Walle
 import { useAccount } from 'wagmi';
 import { CryptoSwap } from '../components/swap/CryptoSwap';
 import { OnRampWidget } from '../components/swap/OnRampWidget';
+import { Web3ModalOnRamp } from '../components/swap/Web3ModalOnRamp';
 import { AnimatedBackground } from '../components/swap/AnimatedBackground';
 import { useSwapHistory, useOnRampOrders } from '../hooks/useSwap';
 import { Card } from '../components/ui/card';
@@ -12,6 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 export function SwapPage() {
   const [activeTab, setActiveTab] = useState('crypto');
+  const [onrampTab, setOnrampTab] = useState('meld'); // 'meld' for Web3Modal (instant), 'onramp' for OnRamp.Money
   const { data: swapHistory = [] } = useSwapHistory(5);
   const { data: onrampOrders = [] } = useOnRampOrders(5);
   const { address, isConnected } = useAccount();
@@ -186,7 +188,34 @@ export function SwapPage() {
                     </Tabs.Content>
 
                     <Tabs.Content value="fiat" className="focus:outline-none p-6">
-                      <OnRampWidget />
+                      {/* Onramp Provider Tabs */}
+                      <div className="space-y-4">
+                        <div className="flex gap-2 p-1 rounded-xl bg-white/5">
+                          <button
+                            onClick={() => setOnrampTab('meld')}
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                              onrampTab === 'meld'
+                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
+                                : 'text-white/60 hover:bg-white/5'
+                            }`}
+                          >
+                            Meld.io (Instant)
+                          </button>
+                          <button
+                            onClick={() => setOnrampTab('onramp')}
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                              onrampTab === 'onramp'
+                                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
+                                : 'text-white/60 hover:bg-white/5'
+                            }`}
+                          >
+                            OnRamp.Money
+                          </button>
+                        </div>
+
+                        {onrampTab === 'meld' && <Web3ModalOnRamp />}
+                        {onrampTab === 'onramp' && <OnRampWidget />}
+                      </div>
                     </Tabs.Content>
                   </Tabs.Root>
                 </div>
