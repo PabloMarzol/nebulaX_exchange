@@ -41,7 +41,6 @@ export const onrampOrders = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id')
-      .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull().unique(),
     fiatAmount: decimal('fiat_amount', { precision: 20, scale: 2 }).notNull(),

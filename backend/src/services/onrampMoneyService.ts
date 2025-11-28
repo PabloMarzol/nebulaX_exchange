@@ -38,7 +38,7 @@ export const NETWORKS = {
 } as const;
 
 export interface CreateOnRampOrderParams {
-  userId: string;
+  userId: string | null;
   fiatAmount: number;
   fiatCurrency: string;
   cryptoCurrency: string;
@@ -51,7 +51,7 @@ export interface CreateOnRampOrderParams {
 
 export interface OnRampOrder {
   id: string;
-  userId: string;
+  userId: string | null;
   fiatAmount: number;
   fiatCurrency: string;
   cryptoAmount?: number;
@@ -95,7 +95,7 @@ export class OnRampMoneyService {
     }
 
     // Generate unique merchant recognition ID
-    const merchantRecognitionId = `${userId}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
+    const merchantRecognitionId = `${walletAddress}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     const idempotencyKey = crypto.randomUUID();
 
     // Determine appId based on environment
@@ -251,16 +251,16 @@ export class OnRampMoneyService {
   }
 
   /**
-   * Get order by ID
+   * Get order by ID (no auth required)
    */
-  async getOrderById(orderId: string, userId: string): Promise<OnRampOrder | null> {
+  async getOrderById(orderId: string): Promise<OnRampOrder | null> {
     const [order] = await db
       .select()
       .from(onrampOrders)
       .where(eq(onrampOrders.id, orderId))
       .limit(1);
 
-    if (!order || order.userId !== userId) {
+    if (!order) {
       return null;
     }
 
@@ -283,13 +283,42 @@ export class OnRampMoneyService {
   }
 
   /**
-   * Get all orders for a user
+   * Get all orders for a user by userId
    */
   async getUserOrders(userId: string, limit: number = 10): Promise<OnRampOrder[]> {
     const orders = await db
       .select()
       .from(onrampOrders)
       .where(eq(onrampOrders.userId, userId))
+      .orderBy(onrampOrders.createdAt)
+      .limit(limit);
+
+    return orders.map((order) => ({
+      id: order.id,
+      userId: order.userId,
+      fiatAmount: parseFloat(order.fiatAmount),
+      fiatCurrency: order.fiatCurrency,
+      cryptoAmount: order.cryptoAmount ? parseFloat(order.cryptoAmount) : undefined,
+      cryptoCurrency: order.cryptoCurrency,
+      network: order.network,
+      walletAddress: order.walletAddress,
+      paymentMethod: order.paymentMethod,
+      merchantRecognitionId: order.merchantRecognitionId!,
+      onrampUrl: order.onrampUrl!,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    }));
+  }
+
+  /**
+   * Get all orders for a wallet address
+   */
+  async getOrdersByWallet(walletAddress: string, limit: number = 10): Promise<OnRampOrder[]> {
+    const orders = await db
+      .select()
+      .from(onrampOrders)
+      .where(eq(onrampOrders.walletAddress, walletAddress))
       .orderBy(onrampOrders.createdAt)
       .limit(limit);
 
