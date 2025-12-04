@@ -303,7 +303,7 @@ export class ZeroXSwapService {
           const metadata = TOKEN_METADATA[address.toLowerCase()];
 
           if (metadata) {
-            // Use placeholder with token symbol
+            // Known token - use full metadata
             const logoURI = `https://ui-avatars.com/api/?name=${encodeURIComponent(metadata.symbol)}&size=128&background=random`;
 
             return {
@@ -313,16 +313,21 @@ export class ZeroXSwapService {
             };
           }
 
-          // Skip unknown tokens silently - only log in development
-          if (process.env.NODE_ENV === 'development') {
-            console.debug(`Unknown token on chain ${chainId}: ${address}`);
-          }
-          return null;
-        })
-        .filter((token): token is NonNullable<typeof token> => token !== null);
+          // Unknown token - use fallback metadata so it still appears in the list
+          const shortAddr = address.slice(2, 8).toUpperCase();
+          return {
+            address,
+            symbol: shortAddr, // Use first 6 chars of address as symbol
+            name: `Token ${shortAddr}`, // Generic name
+            decimals: 18, // Default to 18 decimals (most common)
+            logoURI: `https://ui-avatars.com/api/?name=${shortAddr}&size=128&background=gray`,
+          };
+        });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId}`);
+        const knownCount = tokenMetadata.filter(t => !t.name.startsWith('Token ')).length;
+        const unknownCount = tokenMetadata.length - knownCount;
+        console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId} (${knownCount} known, ${unknownCount} unknown)`);
       }
       return tokenMetadata;
     } catch (error) {
