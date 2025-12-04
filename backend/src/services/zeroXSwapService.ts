@@ -251,12 +251,13 @@ export class ZeroXSwapService {
   }>> {
     // Known token metadata database - avoids rate limiting from RPC calls
     const TOKEN_METADATA: Record<string, { symbol: string; name: string; decimals: number }> = {
-      // Common across chains
+      // Ethereum Mainnet
       '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
       '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { symbol: 'USDC', name: 'USD Coin', decimals: 6 },
       '0xdac17f958d2ee523a2206206994597c13d831ec7': { symbol: 'USDT', name: 'Tether USD', decimals: 6 },
       '0x6b175474e89094c44da98b954eedeac495271d0f': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
       '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': { symbol: 'WBTC', name: 'Wrapped BTC', decimals: 8 },
+      '0x8457ca5040ad67fdebbcc8edce889a335bc0fbfb': { symbol: 'SALT', name: 'SALT', decimals: 8 },
       // Polygon
       '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270': { symbol: 'WMATIC', name: 'Wrapped MATIC', decimals: 18 },
       '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { symbol: 'USDC', name: 'USD Coin (PoS)', decimals: 6 },
@@ -272,6 +273,8 @@ export class ZeroXSwapService {
       '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
       '0x912ce59144191c1204e64559fe8253a0e49e6548': { symbol: 'ARB', name: 'Arbitrum', decimals: 18 },
       '0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f': { symbol: 'WBTC', name: 'Wrapped BTC', decimals: 8 },
+      '0xc5102fe9359fd9a28f877a67e36b0f050d81a3cc': { symbol: 'HONEY', name: 'Honey', decimals: 18 },
+      '0x079504b86d38119f859c4194765029f692b7b7aa': { symbol: 'BORING', name: 'BoringDAO', decimals: 18 },
       // BSC
       '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c': { symbol: 'WBNB', name: 'Wrapped BNB', decimals: 18 },
       '0x55d398326f99059ff775485246999027b3197955': { symbol: 'USDT', name: 'Tether USD', decimals: 18 },
@@ -300,20 +303,27 @@ export class ZeroXSwapService {
           const metadata = TOKEN_METADATA[address.toLowerCase()];
 
           if (metadata) {
+            // Use placeholder with token symbol
+            const logoURI = `https://ui-avatars.com/api/?name=${encodeURIComponent(metadata.symbol)}&size=128&background=random`;
+
             return {
               address,
               ...metadata,
-              logoURI: `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${address}/logo.png`,
+              logoURI,
             };
           }
 
-          // Log unknown tokens for debugging
-          console.log(`Unknown token on chain ${chainId}: ${address}`);
+          // Skip unknown tokens silently - only log in development
+          if (process.env.NODE_ENV === 'development') {
+            console.debug(`Unknown token on chain ${chainId}: ${address}`);
+          }
           return null;
         })
         .filter((token): token is NonNullable<typeof token> => token !== null);
 
-      console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId}`);
+      }
       return tokenMetadata;
     } catch (error) {
       console.error('Failed to fetch gasless tokens, using fallback list:', error);

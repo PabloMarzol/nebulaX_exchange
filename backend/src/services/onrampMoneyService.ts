@@ -101,9 +101,6 @@ export class OnRampMoneyService {
     // Determine appId based on environment
     const appId = env.ONRAMP_APP_ID || (env.NODE_ENV === 'production' ? '1' : '2');
 
-    // Append -test to network for testnet
-    const networkParam = env.NODE_ENV === 'production' ? network : `${network}-test`;
-
     // Build OnRamp URL with parameters
     const urlParams = new URLSearchParams({
       appId,
@@ -111,7 +108,7 @@ export class OnRampMoneyService {
       fiatAmount: fiatAmount.toString(),
       cryptoAmount: '0', // Let OnRamp calculate
       coinCode: cryptoCurrency.toLowerCase(),
-      network: networkParam,
+      network: network.toLowerCase(),
       walletAddress,
       paymentMethod: paymentMethod.toString(),
       merchantRecognitionId,
