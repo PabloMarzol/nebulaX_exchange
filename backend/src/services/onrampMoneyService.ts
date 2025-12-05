@@ -442,15 +442,29 @@ export class OnRampMoneyService {
   }
 
   /**
-   * Fetch real supported coins and networks from OnRamp.Money API
+   * Fetch real supported coins, networks, and currencies from OnRamp.Money API
    */
   async fetchSupportedCoinsAndNetworks(): Promise<{
     coins: Array<{ symbol: string; name: string; networks: Array<{ code: string; name: string }> }>;
     networks: Array<{ id: number; code: string; name: string }>;
+    currencies?: Array<{ code: string; name: string; type: number }>;
   }> {
     try {
       const response = await axios.get('https://api.onramp.money/onramp/api/v2/sell/public/allConfig');
       const data = response.data.data;
+
+      // Parse currencies (fiat)
+      const currencies: Array<{ code: string; name: string; type: number }> = [];
+      if (data.fiatCurrency) {
+        Object.keys(data.fiatCurrency).forEach((fiatCode) => {
+          const fiatData = data.fiatCurrency[fiatCode];
+          currencies.push({
+            code: fiatCode.toUpperCase(),
+            name: fiatData.name || fiatCode.toUpperCase(),
+            type: fiatData.type || parseInt(fiatCode),
+          });
+        });
+      }
 
       // Parse networks
       const networkConfig = data.networkConfig;
@@ -489,7 +503,13 @@ export class OnRampMoneyService {
         });
       });
 
-      return { coins, networks };
+      console.log('Fetched OnRamp config:', {
+        currencies: currencies.length,
+        coins: coins.length,
+        networks: networks.length,
+      });
+
+      return { coins, networks, currencies };
     } catch (error) {
       console.error('Failed to fetch OnRamp supported coins:', error);
 

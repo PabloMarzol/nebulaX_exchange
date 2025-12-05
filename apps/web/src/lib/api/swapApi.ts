@@ -439,19 +439,22 @@ export const onrampApi = {
     return response.data.cryptos;
   },
 
-  // Fetch real supported coins and networks from OnRamp.Money API
+  // Fetch real supported coins, networks, and currencies from OnRamp.Money API
   async fetchSupportedCoinsAndNetworks(): Promise<{
     coins: Array<{ symbol: string; name: string; networks: Array<{ code: string; name: string }> }>;
     networks: Array<{ id: number; code: string; name: string }>;
+    currencies?: Array<{ code: string; name: string; type: number }>;
   }> {
     const response = await axios.get<{
       success: boolean;
       coins: Array<{ symbol: string; name: string; networks: Array<{ code: string; name: string }> }>;
       networks: Array<{ id: number; code: string; name: string }>;
+      currencies?: Array<{ code: string; name: string; type: number }>;
     }>(`${API_URL}/api/swap/onramp/supported`);
     return {
       coins: response.data.coins,
       networks: response.data.networks,
+      currencies: response.data.currencies,
     };
   },
 };
