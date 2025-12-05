@@ -367,32 +367,72 @@ export class OnRampMoneyService {
       const response = await axios.get('https://api.onramp.money/onramp/api/v2/sell/public/allConfig');
       const data = response.data.data;
 
-      // Parse currencies (fiat)
+      // Debug: Log the response structure
+      console.log('OnRamp API response keys:', Object.keys(data));
+
+      // Parse currencies (fiat) - try different possible key names
       const currencies: Array<{ code: string; name: string; type: number }> = [];
-      if (data.fiatCurrency) {
-        Object.keys(data.fiatCurrency).forEach((fiatCode) => {
-          const fiatData = data.fiatCurrency[fiatCode];
+      const fiatCurrencyData = data.fiatCurrency || data.fiat_currency || data.currencies || data.fiatType;
+
+      if (fiatCurrencyData) {
+        console.log('Found fiat currency data with keys:', Object.keys(fiatCurrencyData));
+        Object.keys(fiatCurrencyData).forEach((fiatCode) => {
+          const fiatData = fiatCurrencyData[fiatCode];
+          // Handle both object and primitive values
+          if (typeof fiatData === 'object') {
+            currencies.push({
+              code: fiatCode.toUpperCase(),
+              name: fiatData.name || fiatData.currency_name || fiatCode.toUpperCase(),
+              type: fiatData.type || fiatData.currency_type || parseInt(fiatCode),
+            });
+          } else {
+            // If fiatData is just a number (the type), use it directly
+            currencies.push({
+              code: fiatCode.toUpperCase(),
+              name: fiatCode.toUpperCase(),
+              type: typeof fiatData === 'number' ? fiatData : parseInt(fiatCode),
+            });
+          }
+        });
+      } else {
+        console.warn('No fiat currency data found in OnRamp API response');
+        // Use hardcoded FIAT_TYPES as fallback
+        Object.entries(FIAT_TYPES).forEach(([code, type]) => {
           currencies.push({
-            code: fiatCode.toUpperCase(),
-            name: fiatData.name || fiatCode.toUpperCase(),
-            type: fiatData.type || parseInt(fiatCode),
+            code,
+            name: code,
+            type,
           });
         });
       }
 
-      // Parse networks
+      // Parse networks (filter out test networks and deduplicate)
       const networkConfig = data.networkConfig;
       const networks: Array<{ id: number; code: string; name: string }> = [];
+      const seenCodes = new Set<string>();
 
       Object.keys(networkConfig).forEach((networkId) => {
+        const chainSymbol = networkConfig[networkId].chainSymbol;
+
+        // Skip test networks (ending with -test)
+        if (chainSymbol.endsWith('-test')) {
+          return;
+        }
+
+        // Skip duplicates
+        if (seenCodes.has(chainSymbol)) {
+          return;
+        }
+
+        seenCodes.add(chainSymbol);
         networks.push({
           id: parseInt(networkId),
-          code: networkConfig[networkId].chainSymbol,
-          name: networkConfig[networkId].chainSymbol.toUpperCase(),
+          code: chainSymbol,
+          name: chainSymbol.toUpperCase(),
         });
       });
 
-      // Parse coins and their supported networks
+      // Parse coins and their supported networks (exclude test networks)
       const allCoinConfig = data.allCoinConfig;
       const coins: Array<{ symbol: string; name: string; networks: Array<{ code: string; name: string }> }> = [];
 
@@ -402,7 +442,7 @@ export class OnRampMoneyService {
 
         coinData.networks.forEach((networkId: number) => {
           const network = networks.find((n) => n.id === networkId);
-          if (network) {
+          if (network && !network.code.endsWith('-test')) {
             supportedNetworks.push({
               code: network.code,
               name: network.name,
@@ -410,11 +450,14 @@ export class OnRampMoneyService {
           }
         });
 
-        coins.push({
-          symbol: coinCode.toUpperCase(),
-          name: coinData.coinName || coinCode.toUpperCase(),
-          networks: supportedNetworks,
-        });
+        // Only include coins that have at least one supported network
+        if (supportedNetworks.length > 0) {
+          coins.push({
+            symbol: coinCode.toUpperCase(),
+            name: coinData.coinName || coinCode.toUpperCase(),
+            networks: supportedNetworks,
+          });
+        }
       });
 
       console.log('Fetched OnRamp config:', {
@@ -436,6 +479,7 @@ export class OnRampMoneyService {
           { id: 3, code: 'matic20', name: 'MATIC20' },
           { id: 13, code: 'arbitrum', name: 'ARBITRUM' },
         ],
+        currencies: this.getSupportedCurrencies(),
       };
     }
   }
