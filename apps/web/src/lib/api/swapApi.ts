@@ -52,6 +52,7 @@ export interface Token {
   name: string;
   decimals: number;
   logoURI?: string;
+  supportsGasless?: boolean; // Flag to indicate gasless swap support
 }
 
 export interface TokenAllowance {

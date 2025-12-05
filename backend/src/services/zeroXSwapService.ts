@@ -6,6 +6,31 @@ import { coingeckoService } from './coingeckoService.js';
 
 const ZERO_X_API_BASE = 'https://api.0x.org';
 
+// Gasless tokens cache with 5-minute TTL
+const gaslessTokensCache = new Map<number, { tokens: Address[]; timestamp: number }>();
+const GASLESS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Token list cache with 24-hour TTL
+interface TokenListEntry {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoURI?: string;
+}
+const tokenListCache = new Map<number, { tokens: TokenListEntry[]; timestamp: number }>();
+const TOKEN_LIST_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+// Standard token list URLs per chain
+const TOKEN_LIST_URLS: Record<number, string> = {
+  1: 'https://tokens.coingecko.com/uniswap/all.json',
+  137: 'https://api-polygon-tokens.polygon.technology/tokenlists/default.tokenlist.json',
+  42161: 'https://tokenlist.arbitrum.io/ArbTokenLists/arbed_arb_whitelist_era.json',
+  10: 'https://static.optimism.io/optimism.tokenlist.json',
+  8453: 'https://tokens.coingecko.com/base/all.json',
+  56: 'https://tokens.pancakeswap.finance/pancakeswap-extended.json',
+};
+
 // Chain mapping for 0x API
 const CHAIN_CONFIG = {
   [mainnet.id]: {
@@ -240,9 +265,91 @@ export class ZeroXSwapService {
   }
 
   /**
+   * Fetch gasless approval tokens with caching (5-minute TTL)
+   */
+  private async fetchGaslessTokensCached(chainId: number): Promise<Address[]> {
+    // Check cache first
+    const cached = gaslessTokensCache.get(chainId);
+    if (cached && Date.now() - cached.timestamp < GASLESS_CACHE_TTL) {
+      return cached.tokens;
+    }
+
+    // Fetch from API
+    try {
+      const { tokens } = await this.getGaslessApprovalTokens(chainId);
+
+      // Cache result
+      gaslessTokensCache.set(chainId, { tokens, timestamp: Date.now() });
+
+      return tokens;
+    } catch (error) {
+      // Return cached value even if expired, or empty array
+      return cached?.tokens || [];
+    }
+  }
+
+  /**
+   * Fetch token list from standard sources with caching (24-hour TTL)
+   */
+  private async fetchTokenListCached(chainId: number): Promise<TokenListEntry[]> {
+    // Check cache first
+    const cached = tokenListCache.get(chainId);
+    if (cached && Date.now() - cached.timestamp < TOKEN_LIST_CACHE_TTL) {
+      return cached.tokens;
+    }
+
+    const tokenListUrl = TOKEN_LIST_URLS[chainId];
+    if (!tokenListUrl) {
+      return [];
+    }
+
+    try {
+      const response = await axios.get(tokenListUrl, {
+        timeout: 8000,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'NebulaX-Exchange/1.0'
+        }
+      });
+
+      const data = response.data;
+      let tokenArray = data.tokens || data;
+
+      if (!Array.isArray(tokenArray)) {
+        console.warn(`Invalid token list format for chain ${chainId}`);
+        return cached?.tokens || [];
+      }
+
+      // Filter for this chain and map to our format
+      const tokens: TokenListEntry[] = tokenArray
+        .filter((token: any) => {
+          const tokenChainId = token.chainId || token.chain || chainId;
+          return tokenChainId === chainId;
+        })
+        .map((token: any) => ({
+          address: token.address.toLowerCase(),
+          symbol: token.symbol,
+          name: token.name,
+          decimals: token.decimals,
+          logoURI: token.logoURI || token.logoUri || token.icon,
+        }));
+
+      // Cache result
+      tokenListCache.set(chainId, { tokens, timestamp: Date.now() });
+
+      console.log(`Fetched and cached ${tokens.length} tokens from token list for chain ${chainId}`);
+
+      return tokens;
+    } catch (error) {
+      console.warn(`Failed to fetch token list for chain ${chainId}:`, error);
+      // Return cached value even if expired, or empty array
+      return cached?.tokens || [];
+    }
+  }
+
+  /**
    * Get supported tokens for a chain
-   * Uses gasless-approval-tokens endpoint with static metadata (CoinGecko disabled due to rate limits)
-   * NOTE: CoinGecko integration available via coingeckoService but not used here to avoid rate limits
+   * Uses gasless-approval-tokens endpoint with token list metadata and gasless flag
    */
   async getSupportedTokens(chainId: number): Promise<Array<{
     address: Address;
@@ -250,6 +357,7 @@ export class ZeroXSwapService {
     name: string;
     decimals: number;
     logoURI?: string;
+    supportsGasless?: boolean;
   }>> {
     // Static metadata - primary source for known tokens
     const TOKEN_METADATA: Record<string, { symbol: string; name: string; decimals: number }> = {
@@ -295,25 +403,46 @@ export class ZeroXSwapService {
     };
 
     try {
-      // Get tokens that support gasless approvals from 0x API
-      const { tokens: gaslessTokens } = await this.getGaslessApprovalTokens(chainId);
+      // Get gasless tokens (cached - 5min TTL)
+      const gaslessTokens = await this.fetchGaslessTokensCached(chainId);
 
-      // Map tokens with two-tier fallback: Static -> Address-based
-      // (CoinGecko disabled to avoid rate limits with hundreds of tokens)
+      // Get token list from standard sources (cached - 24hr TTL)
+      const tokenList = await this.fetchTokenListCached(chainId);
+
+      // Create a map for quick token list lookups
+      const tokenListMap = new Map(
+        tokenList.map(token => [token.address.toLowerCase(), token])
+      );
+
+      // Map gasless tokens with three-tier fallback: Token List -> Static -> Address-based
       const tokenMetadata = gaslessTokens.map((address) => {
         const normalizedAddress = address.toLowerCase();
 
-        // Tier 1: Static metadata (good quality - known tokens)
+        // Tier 1: Token list metadata (best - real logos and verified info)
+        const tokenListEntry = tokenListMap.get(normalizedAddress);
+        if (tokenListEntry) {
+          return {
+            address,
+            symbol: tokenListEntry.symbol,
+            name: tokenListEntry.name,
+            decimals: tokenListEntry.decimals,
+            logoURI: tokenListEntry.logoURI || `https://ui-avatars.com/api/?name=${encodeURIComponent(tokenListEntry.symbol)}&size=128&background=random`,
+            supportsGasless: true,
+          };
+        }
+
+        // Tier 2: Static metadata (good - known tokens)
         const staticMetadata = TOKEN_METADATA[normalizedAddress];
         if (staticMetadata) {
           return {
             address,
             ...staticMetadata,
             logoURI: `https://ui-avatars.com/api/?name=${encodeURIComponent(staticMetadata.symbol)}&size=128&background=random`,
+            supportsGasless: true,
           };
         }
 
-        // Tier 2: Address-based metadata (ensures ALL tokens appear)
+        // Tier 3: Address-based metadata (ensures ALL tokens appear)
         const shortAddr = address.slice(2, 8).toUpperCase();
         return {
           address,
@@ -321,13 +450,15 @@ export class ZeroXSwapService {
           name: `Token ${shortAddr}`,
           decimals: 18,
           logoURI: `https://ui-avatars.com/api/?name=${shortAddr}&size=128&background=gray`,
+          supportsGasless: true,
         };
       });
 
       if (process.env.NODE_ENV === 'development') {
-        const knownCount = tokenMetadata.filter(t => !t.name.startsWith('Token ')).length;
-        const unknownCount = tokenMetadata.length - knownCount;
-        console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId}: ${knownCount} known, ${unknownCount} unknown`);
+        const tokenListCount = tokenMetadata.filter(t => tokenListMap.has(t.address.toLowerCase())).length;
+        const staticCount = tokenMetadata.filter(t => !tokenListMap.has(t.address.toLowerCase()) && !t.name.startsWith('Token ')).length;
+        const unknownCount = tokenMetadata.filter(t => t.name.startsWith('Token ')).length;
+        console.log(`Loaded ${tokenMetadata.length} gasless tokens for chain ${chainId}: ${tokenListCount} from token list, ${staticCount} from static, ${unknownCount} unknown`);
       }
 
       return tokenMetadata;
