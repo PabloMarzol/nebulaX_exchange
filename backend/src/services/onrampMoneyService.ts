@@ -3,6 +3,7 @@ import { onrampOrders } from '@shared/schema/swap.schema.js';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import crypto from 'crypto';
+import axios from 'axios';
 
 const ONRAMP_BASE_URL = env.ONRAMP_BASE_URL || 'https://onramp.money';
 
@@ -355,7 +356,72 @@ export class OnRampMoneyService {
   }
 
   /**
-   * Get supported cryptocurrencies and networks
+   * Fetch real supported coins and networks from OnRamp.Money API
+   */
+  async fetchSupportedCoinsAndNetworks(): Promise<{
+    coins: Array<{ symbol: string; name: string; networks: Array<{ code: string; name: string }> }>;
+    networks: Array<{ id: number; code: string; name: string }>;
+  }> {
+    try {
+      const response = await axios.get('https://api.onramp.money/onramp/api/v2/sell/public/allConfig');
+      const data = response.data.data;
+
+      // Parse networks
+      const networkConfig = data.networkConfig;
+      const networks: Array<{ id: number; code: string; name: string }> = [];
+
+      Object.keys(networkConfig).forEach((networkId) => {
+        networks.push({
+          id: parseInt(networkId),
+          code: networkConfig[networkId].chainSymbol,
+          name: networkConfig[networkId].chainSymbol.toUpperCase(),
+        });
+      });
+
+      // Parse coins and their supported networks
+      const allCoinConfig = data.allCoinConfig;
+      const coins: Array<{ symbol: string; name: string; networks: Array<{ code: string; name: string }> }> = [];
+
+      Object.keys(allCoinConfig).forEach((coinCode) => {
+        const coinData = allCoinConfig[coinCode];
+        const supportedNetworks: Array<{ code: string; name: string }> = [];
+
+        coinData.networks.forEach((networkId: number) => {
+          const network = networks.find((n) => n.id === networkId);
+          if (network) {
+            supportedNetworks.push({
+              code: network.code,
+              name: network.name,
+            });
+          }
+        });
+
+        coins.push({
+          symbol: coinCode.toUpperCase(),
+          name: coinData.coinName || coinCode.toUpperCase(),
+          networks: supportedNetworks,
+        });
+      });
+
+      return { coins, networks };
+    } catch (error) {
+      console.error('Failed to fetch OnRamp supported coins:', error);
+
+      // Fallback to hardcoded list
+      return {
+        coins: this.getSupportedCryptos(),
+        networks: [
+          { id: 0, code: 'erc20', name: 'ERC20' },
+          { id: 1, code: 'bep20', name: 'BEP20' },
+          { id: 3, code: 'matic20', name: 'MATIC20' },
+          { id: 13, code: 'arbitrum', name: 'ARBITRUM' },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Get supported cryptocurrencies and networks (hardcoded fallback)
    */
   getSupportedCryptos(): Array<{
     symbol: string;

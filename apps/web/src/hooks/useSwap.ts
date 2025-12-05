@@ -158,7 +158,17 @@ export function useOnRampCurrencies() {
 export function useOnRampCryptos() {
   return useQuery({
     queryKey: ['onramp-cryptos'],
-    queryFn: () => onrampApi.getSupportedCryptos(),
+    queryFn: async () => {
+      try {
+        // Try to fetch real supported coins/networks from OnRamp.Money API
+        const { coins } = await onrampApi.fetchSupportedCoinsAndNetworks();
+        return coins;
+      } catch (error) {
+        console.warn('Failed to fetch real OnRamp supported coins, using fallback:', error);
+        // Fallback to hardcoded list
+        return onrampApi.getSupportedCryptos();
+      }
+    },
     staleTime: 1000 * 60 * 60, // 1 hour
   });
 }

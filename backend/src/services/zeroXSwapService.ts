@@ -2,6 +2,7 @@ import { createPublicClient, http, type Address, parseUnits, formatUnits } from 
 import { mainnet, polygon, arbitrum, bsc, base, optimism } from 'viem/chains';
 import { env } from '../config/env.js';
 import axios from 'axios';
+import { coingeckoService } from './coingeckoService.js';
 
 const ZERO_X_API_BASE = 'https://api.0x.org';
 
@@ -240,7 +241,7 @@ export class ZeroXSwapService {
 
   /**
    * Get supported tokens for a chain
-   * Uses gasless-approval-tokens endpoint with static metadata (no RPC calls)
+   * Uses gasless-approval-tokens endpoint with CoinGecko metadata (fallback to static)
    */
   async getSupportedTokens(chainId: number): Promise<Array<{
     address: Address;
@@ -249,7 +250,7 @@ export class ZeroXSwapService {
     decimals: number;
     logoURI?: string;
   }>> {
-    // Known token metadata database - avoids rate limiting from RPC calls
+    // Static fallback metadata - used when CoinGecko fails or rate limits
     const TOKEN_METADATA: Record<string, { symbol: string; name: string; decimals: number }> = {
       // Ethereum Mainnet
       '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
@@ -296,39 +297,50 @@ export class ZeroXSwapService {
       // Get tokens that support gasless approvals from 0x API
       const { tokens: gaslessTokens } = await this.getGaslessApprovalTokens(chainId);
 
-      // Map gasless tokens to known metadata (no blockchain calls)
-      const tokenMetadata = gaslessTokens
-        .map((address) => {
-          // Normalize address to lowercase for lookup
-          const metadata = TOKEN_METADATA[address.toLowerCase()];
+      // Map tokens with three-tier fallback: CoinGecko -> Static -> Address-based
+      const tokenMetadataPromises = gaslessTokens.map(async (address) => {
+        const normalizedAddress = address.toLowerCase();
 
-          if (metadata) {
-            // Known token - use full metadata
-            const logoURI = `https://ui-avatars.com/api/?name=${encodeURIComponent(metadata.symbol)}&size=128&background=random`;
-
-            return {
-              address,
-              ...metadata,
-              logoURI,
-            };
+        // Tier 1: Try CoinGecko API first (best quality - real images and data)
+        try {
+          const coingeckoData = await coingeckoService.getTokenMetadata(address, chainId);
+          if (coingeckoData) {
+            return coingeckoData;
           }
+        } catch (error) {
+          // CoinGecko failed, fall through to static metadata
+        }
 
-          // Unknown token - use fallback metadata so it still appears in the list
-          const shortAddr = address.slice(2, 8).toUpperCase();
+        // Tier 2: Fall back to static metadata (good quality - known tokens)
+        const staticMetadata = TOKEN_METADATA[normalizedAddress];
+        if (staticMetadata) {
           return {
             address,
-            symbol: shortAddr, // Use first 6 chars of address as symbol
-            name: `Token ${shortAddr}`, // Generic name
-            decimals: 18, // Default to 18 decimals (most common)
-            logoURI: `https://ui-avatars.com/api/?name=${shortAddr}&size=128&background=gray`,
+            ...staticMetadata,
+            logoURI: `https://ui-avatars.com/api/?name=${encodeURIComponent(staticMetadata.symbol)}&size=128&background=random`,
           };
-        });
+        }
+
+        // Tier 3: Final fallback - address-based metadata (ensures ALL tokens appear)
+        const shortAddr = address.slice(2, 8).toUpperCase();
+        return {
+          address,
+          symbol: shortAddr,
+          name: `Token ${shortAddr}`,
+          decimals: 18,
+          logoURI: `https://ui-avatars.com/api/?name=${shortAddr}&size=128&background=gray`,
+        };
+      });
+
+      const tokenMetadata = await Promise.all(tokenMetadataPromises);
 
       if (process.env.NODE_ENV === 'development') {
-        const knownCount = tokenMetadata.filter(t => !t.name.startsWith('Token ')).length;
-        const unknownCount = tokenMetadata.length - knownCount;
-        console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId} (${knownCount} known, ${unknownCount} unknown)`);
+        const coingeckoCount = tokenMetadata.filter(t => t.logoURI && !t.logoURI.includes('ui-avatars')).length;
+        const staticCount = tokenMetadata.filter(t => t.logoURI?.includes('background=random')).length;
+        const unknownCount = tokenMetadata.filter(t => t.name.startsWith('Token ')).length;
+        console.log(`Loaded ${tokenMetadata.length} tokens for chain ${chainId}: ${coingeckoCount} from CoinGecko, ${staticCount} from static, ${unknownCount} unknown`);
       }
+
       return tokenMetadata;
     } catch (error) {
       console.error('Failed to fetch gasless tokens, using fallback list:', error);
