@@ -598,7 +598,7 @@ router.get('/onramp/currencies', (req, res) => {
 
 /**
  * GET /api/swap/onramp/cryptos
- * Get supported cryptocurrencies and networks
+ * Get supported cryptocurrencies and networks (hardcoded fallback)
  */
 router.get('/onramp/cryptos', (req, res) => {
   const cryptos = onrampMoneyService.getSupportedCryptos();
@@ -606,6 +606,23 @@ router.get('/onramp/cryptos', (req, res) => {
     success: true,
     cryptos,
   });
+});
+
+/**
+ * GET /api/swap/onramp/supported
+ * Fetch real supported coins and networks from OnRamp.Money API
+ */
+router.get('/onramp/supported', async (req, res, next) => {
+  try {
+    const { coins, networks } = await onrampMoneyService.fetchSupportedCoinsAndNetworks();
+    res.json({
+      success: true,
+      coins,
+      networks,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Import necessary functions
