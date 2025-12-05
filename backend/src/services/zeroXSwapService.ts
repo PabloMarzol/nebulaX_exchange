@@ -199,10 +199,19 @@ export class ZeroXSwapService {
   async getSwapQuote(params: SwapQuoteParams): Promise<SwapQuote> {
     const { apiUrl } = this.getChainConfig(params.chainId);
 
+    // Normalize native token address to lowercase for 0x API
+    // The swap API expects lowercase native token address
+    const sellToken = params.sellToken.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()
+      ? NATIVE_TOKEN_ADDRESS.toLowerCase()
+      : params.sellToken;
+    const buyToken = params.buyToken.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()
+      ? NATIVE_TOKEN_ADDRESS.toLowerCase()
+      : params.buyToken;
+
     // Build query parameters
     const queryParams = new URLSearchParams({
-      sellToken: params.sellToken,
-      buyToken: params.buyToken,
+      sellToken,
+      buyToken,
       takerAddress: params.takerAddress,
       ...(params.sellAmount && { sellAmount: params.sellAmount }),
       ...(params.buyAmount && { buyAmount: params.buyAmount }),
@@ -244,9 +253,18 @@ export class ZeroXSwapService {
   }> {
     const { apiUrl } = this.getChainConfig(params.chainId);
 
+    // Normalize native token address to lowercase for 0x API
+    // The swap API expects lowercase native token address
+    const sellToken = params.sellToken.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()
+      ? NATIVE_TOKEN_ADDRESS.toLowerCase()
+      : params.sellToken;
+    const buyToken = params.buyToken.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()
+      ? NATIVE_TOKEN_ADDRESS.toLowerCase()
+      : params.buyToken;
+
     const queryParams = new URLSearchParams({
-      sellToken: params.sellToken,
-      buyToken: params.buyToken,
+      sellToken,
+      buyToken,
       ...(params.sellAmount && { sellAmount: params.sellAmount }),
       ...(params.buyAmount && { buyAmount: params.buyAmount }),
     });

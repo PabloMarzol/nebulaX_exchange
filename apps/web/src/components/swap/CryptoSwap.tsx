@@ -132,8 +132,13 @@ export function CryptoSwap() {
 
   // Format buy amount from quote
   const buyAmount = useMemo(() => {
-    if (!quote || !buyToken) return '';
-    return formatUnits(BigInt(quote.buyAmount), buyToken.decimals);
+    if (!quote || !buyToken || !quote.buyAmount) return '';
+    try {
+      return formatUnits(BigInt(quote.buyAmount), buyToken.decimals);
+    } catch (error) {
+      console.error('Error formatting buy amount:', error);
+      return '';
+    }
   }, [quote, buyToken]);
 
   // Handle token swap
