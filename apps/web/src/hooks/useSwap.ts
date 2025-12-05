@@ -150,7 +150,21 @@ export function useOnRampOrder(orderId: string | null, walletAddress?: string) {
 export function useOnRampCurrencies() {
   return useQuery({
     queryKey: ['onramp-currencies'],
-    queryFn: () => onrampApi.getSupportedCurrencies(),
+    queryFn: async () => {
+      try {
+        // Try to fetch real supported currencies from OnRamp.Money API
+        const { currencies } = await onrampApi.fetchSupportedCoinsAndNetworks();
+        if (currencies && currencies.length > 0) {
+          return currencies;
+        }
+        // Fallback if no currencies in response
+        return onrampApi.getSupportedCurrencies();
+      } catch (error) {
+        console.warn('Failed to fetch real OnRamp currencies, using fallback:', error);
+        // Fallback to hardcoded list
+        return onrampApi.getSupportedCurrencies();
+      }
+    },
     staleTime: 1000 * 60 * 60, // 1 hour
   });
 }
