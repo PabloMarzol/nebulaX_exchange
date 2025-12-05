@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Repeat, Coins, History, Sparkles, TrendingUp, Shield, ArrowRight, Wallet } from 'lucide-react';
 import { useAccount } from 'wagmi';
@@ -17,6 +17,22 @@ export function SwapPage() {
   const { data: swapHistory = [] } = useSwapHistory(5);
   const { data: onrampOrders = [] } = useOnRampOrders(5);
   const { address, isConnected } = useAccount();
+
+  // Handle popup callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const onrampStatus = params.get('onramp');
+    if (onrampStatus && window.opener) {
+      // Send message to opener
+      window.opener.postMessage({
+        type: 'ONRAMP_COMPLETE',
+        status: onrampStatus,
+        merchantId: params.get('merchantId'),
+      }, '*');
+      // Close popup
+      window.close();
+    }
+  }, []);
 
   const handleConnect = () => {
     // Open Web3Modal - using the global modal

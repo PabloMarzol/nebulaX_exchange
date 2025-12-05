@@ -429,6 +429,32 @@ router.get('/gasless/chains', async (req, res, next) => {
 // ======================
 
 /**
+ * POST /api/swap/onramp/quote
+ * Get a quote for OnRamp Money
+ */
+router.post('/onramp/quote', async (req, res, next) => {
+  try {
+    const schema = z.object({
+      fiatAmount: z.number().positive().min(10).max(100000),
+      fiatCurrency: z.string().length(3),
+      cryptoCurrency: z.string().min(2).max(20),
+      network: z.string().min(2).max(50),
+    });
+
+    const data = schema.parse(req.body);
+
+    const quote = await onrampMoneyService.getQuote(data);
+
+    res.json({
+      success: true,
+      quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * POST /api/swap/onramp/create
  * Create a new OnRamp Money order
  * No authentication required - uses wallet address as identifier

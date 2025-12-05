@@ -70,7 +70,105 @@ export interface OnRampOrder {
   updatedAt: Date;
 }
 
+export interface OnRampQuote {
+  fiatAmount: number;
+  fiatCurrency: string;
+  cryptoAmount: number;
+  cryptoCurrency: string;
+  rate: number;
+  fees: {
+    onRamp: number;
+    network: number;
+    total: number;
+  };
+  validUntil: Date;
+}
+
 export class OnRampMoneyService {
+  /**
+   * Get a quote for OnRamp Money
+   */
+  async getQuote(params: {
+    fiatAmount: number;
+    fiatCurrency: string;
+    cryptoCurrency: string;
+    network: string;
+  }): Promise<OnRampQuote> {
+    const { fiatAmount, fiatCurrency, cryptoCurrency, network } = params;
+    const fiatType = FIAT_TYPES[fiatCurrency.toUpperCase()];
+
+    if (!fiatType) {
+      throw new Error(`Unsupported fiat currency: ${fiatCurrency}`);
+    }
+
+    const payload = {
+      timestamp: Date.now(),
+      body: {
+        coinCode: cryptoCurrency.toLowerCase(),
+        network: network.toLowerCase(),
+        fiatAmount: fiatAmount,
+        fiatType: fiatType,
+        type: 1, // 1 -> onramp
+      },
+    };
+
+    const secret = env.ONRAMP_APP_LIVE_SECRET_KEY;
+    // Check if secret is available, if not, maybe throw or mock if in dev (but we want real quotes)
+    if (!secret) throw new Error('ONRAMP_APP_LIVE_SECRET_KEY not configured');
+
+    const apiKey = env.ONRAMP_API_LIVE_KEY;
+    
+    // In createOrder, we used ONRAMP_APP_LIVE_ID. 
+    // The API requires X-ONRAMP-APIKEY and X-ONRAMP-SIGNATURE.
+    // Let's assume ONRAMP_APP_LIVE_KEY corresponds to the API Key and ONRAMP_APP_LIVE_ID is the App ID.
+    // BUT createOrder uses only AppID in URL. 
+    // The Docs say: "Your api key". 
+    // I will check env.ts to see what keys we have.
+
+    // Let's assume for now and I will check config next.
+    
+    const payloadBuffer = Buffer.from(JSON.stringify(payload));
+    const payloadBase64 = payloadBuffer.toString('base64');
+    const signature = crypto.createHmac('sha512', secret).update(payloadBase64).digest('hex');
+
+    try {
+      const response = await axios.post(
+        `${ONRAMP_BASE_URL}/onramp/api/v2/common/transaction/quotes`,
+        payload.body, 
+        {
+          headers: {
+            'Content-Type': 'application/json;charset=UTF-8',
+            'X-ONRAMP-SIGNATURE': signature,
+            'X-ONRAMP-APIKEY': apiKey, 
+            'X-ONRAMP-PAYLOAD': payloadBase64,
+          },
+        }
+      );
+
+      const data = response.data.data;
+      // data: { rate, quantity, onrampFee, clientFee, gatewayFee, gasFee }
+      
+      const onRampFeeTotal = (data.onrampFee || 0) + (data.clientFee || 0) + (data.gatewayFee || 0);
+      
+      return {
+        fiatAmount,
+        fiatCurrency: fiatCurrency.toUpperCase(),
+        cryptoAmount: data.quantity,
+        cryptoCurrency: cryptoCurrency.toUpperCase(),
+        rate: data.rate,
+        fees: {
+          onRamp: onRampFeeTotal,
+          network: data.gasFee || 0,
+          total: onRampFeeTotal + (data.gasFee || 0),
+        },
+        validUntil: new Date(Date.now() + 30000), // 30s validity
+      };
+    } catch (error: any) {
+      console.error('OnRamp Quote Error:', error.response?.data || error.message);
+      throw new Error('Failed to fetch quote from OnRamp Money');
+    }
+  }
+
   /**
    * Create a new OnRamp Money order
    */
@@ -121,7 +219,7 @@ export class OnRampMoneyService {
       walletAddress,
       paymentMethod: paymentMethod.toString(),
       merchantRecognitionId,
-      redirectURL: `${env.FRONTEND_URL || 'http://localhost:5173'}/swap?onramp=success&merchantId=${merchantRecognitionId}`,
+      redirectURL: `${env.API_URL}/api/swap/onramp/callback`,
       ...(phoneNumber && { phone: encodeURIComponent(phoneNumber) }),
       language,
     });

@@ -37,6 +37,24 @@ export function useTokens(chainId: number) {
   });
 }
 
+export function useOnRampQuote(
+  params: {
+    fiatAmount: number;
+    fiatCurrency: string;
+    cryptoCurrency: string;
+    network: string;
+  } | null
+) {
+  return useQuery({
+    queryKey: ['onramp-quote', params],
+    queryFn: () => (params ? onrampApi.getQuote(params) : Promise.reject('Missing params')),
+    enabled: !!params && params.fiatAmount > 0,
+    staleTime: 30000, // 30 seconds
+    refetchInterval: 60000,
+    retry: false, // Don't retry on 400s (e.g., invalid amount)
+  });
+}
+
 // Hook to check token allowance
 export function useTokenAllowance(
   params: { tokenAddress: string; ownerAddress: string; chainId: number } | null
