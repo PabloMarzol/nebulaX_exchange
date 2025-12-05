@@ -18,9 +18,20 @@ const FIAT_TYPES: Record<string, number> = {
   MXN: 4,
   VND: 5,
   NGN: 6,
-  USD: 7,
-  EUR: 8,
-  GBP: 9,
+  BRL: 7,
+  PEN: 8,
+  COP: 9,
+  CLP: 10,
+  PHP: 11,
+  EUR: 12,
+  IDR: 14,
+  KES: 15,
+  GHS: 16,
+  ZAR: 17,
+  RWF: 18,
+  XAF: 19,
+  GBP: 20,
+  USD: 21,
 };
 
 // Payment method types
@@ -165,7 +176,8 @@ export class OnRampMoneyService {
       };
     } catch (error: any) {
       console.error('OnRamp Quote Error:', error.response?.data || error.message);
-      throw new Error('Failed to fetch quote from OnRamp Money');
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+      throw new Error(`Failed to fetch quote from OnRamp Money: ${errorMessage}`);
     }
   }
 
