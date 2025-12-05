@@ -51,10 +51,19 @@ export function CryptoSwap() {
   const [txStatus, setTxStatus] = useState<'idle' | 'signing' | 'submitting' | 'polling' | 'success' | 'error'>('idle');
   const [tradeHash, setTradeHash] = useState<string | null>(null);
 
+  // Native token address used by 0x Protocol
+  const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+
+  // Check if token is a native token
+  const isNativeToken = (address?: string) => {
+    return address?.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase();
+  };
+
   // Get balance for sell token
+  // For native tokens, pass undefined to useBalance; for ERC-20 tokens, pass the address
   const { data: sellTokenBalance } = useBalance({
     address,
-    token: sellToken?.address,
+    token: sellToken && !isNativeToken(sellToken.address) ? sellToken.address : undefined,
     chainId,
     enabled: !!sellToken && !!address,
   });
@@ -81,14 +90,29 @@ export function CryptoSwap() {
 
         const parsedAmount = parseUnits(sellAmount, sellToken.decimals);
 
-        const quoteResponse = await swapApi.getGaslessPrice({
-          chainId,
-          sellToken: sellToken.address,
-          buyToken: buyToken.address,
-          sellAmount: parsedAmount.toString(),
-          taker: address,
-          slippageBps,
-        });
+        // Check if both tokens support gasless swaps
+        const bothSupportGasless = sellToken.supportsGasless !== false && buyToken.supportsGasless !== false;
+
+        let quoteResponse;
+        if (bothSupportGasless) {
+          // Use gasless API for ERC-20 tokens that support gasless
+          quoteResponse = await swapApi.getGaslessPrice({
+            chainId,
+            sellToken: sellToken.address,
+            buyToken: buyToken.address,
+            sellAmount: parsedAmount.toString(),
+            taker: address,
+            slippageBps,
+          });
+        } else {
+          // Fall back to regular price API for native tokens or tokens that don't support gasless
+          quoteResponse = await swapApi.getPrice({
+            chainId,
+            sellToken: sellToken.address,
+            buyToken: buyToken.address,
+            sellAmount: parsedAmount.toString(),
+          });
+        }
 
         setQuote(quoteResponse);
         setQuoteExpiry(Date.now() + 30000); // 30 seconds from now
@@ -130,9 +154,20 @@ export function CryptoSwap() {
     }
   };
 
+  // Check if gasless swap is supported for current token pair
+  const isGaslessSupported = useMemo(() => {
+    return sellToken?.supportsGasless !== false && buyToken?.supportsGasless !== false;
+  }, [sellToken, buyToken]);
+
   // Handle swap execution with gasless flow
   const handleExecuteSwap = async () => {
     if (!quote || !sellToken || !buyToken || !address || !token) return;
+
+    // Check if gasless is supported
+    if (!isGaslessSupported) {
+      setQuoteError('Native token swaps are not yet supported in gasless mode. Please use an ERC-20 token.');
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -437,10 +472,20 @@ export function CryptoSwap() {
         </div>
       )}
 
+      {/* Gasless Not Supported Warning */}
+      {quote && !isGaslessSupported && (
+        <div className="p-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/20">
+          <p className="text-sm text-yellow-400">
+            ⚠️ Native token swaps (ETH, MATIC, BNB) are not supported in gasless mode yet.
+            You can view your balance and get price quotes, but cannot execute the swap at this time.
+          </p>
+        </div>
+      )}
+
       {/* Action Button */}
       <Button
         onClick={handleExecuteSwap}
-        disabled={!quote || isFetchingQuote || isSubmitting || !sellAmount || parseFloat(sellAmount) <= 0}
+        disabled={!quote || isFetchingQuote || isSubmitting || !sellAmount || parseFloat(sellAmount) <= 0 || !isGaslessSupported}
         className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-500 hover:opacity-90 transition-opacity"
       >
         {isSubmitting ? (
@@ -454,6 +499,8 @@ export function CryptoSwap() {
           'Fetching Quote...'
         ) : txStatus === 'success' ? (
           '✓ Swap Successful!'
+        ) : !isGaslessSupported ? (
+          'Native Token Swaps Not Supported'
         ) : (
           'Swap'
         )}
