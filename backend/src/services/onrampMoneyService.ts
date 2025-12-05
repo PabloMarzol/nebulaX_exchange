@@ -635,10 +635,13 @@ export class OnRampMoneyService {
       Object.keys(allCoinConfig).forEach((coinCode) => {
         const coinData = allCoinConfig[coinCode];
         const supportedNetworks: Array<{ code: string; name: string }> = [];
+        const seenNetworkCodes = new Set<string>();
 
         coinData.networks.forEach((networkId: number) => {
           const network = networks.find((n) => n.id === networkId);
-          if (network && !network.code.endsWith('-test')) {
+          // Deduplicate: only add if not test network and not already seen
+          if (network && !network.code.endsWith('-test') && !seenNetworkCodes.has(network.code)) {
+            seenNetworkCodes.add(network.code);
             supportedNetworks.push({
               code: network.code,
               name: network.name,
