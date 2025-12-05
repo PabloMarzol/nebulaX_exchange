@@ -6,6 +6,68 @@ import { coingeckoService } from './coingeckoService.js';
 
 const ZERO_X_API_BASE = 'https://api.0x.org';
 
+// Native token special address recognized by 0x Protocol
+const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as Address;
+
+// Native tokens per chain (these don't need approval, so supportsGasless = false)
+const NATIVE_TOKENS: Record<number, {
+  address: Address;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoURI: string;
+  supportsGasless: boolean;
+}> = {
+  [mainnet.id]: {
+    address: NATIVE_TOKEN_ADDRESS,
+    symbol: 'ETH',
+    name: 'Ethereum',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+    supportsGasless: false,
+  },
+  [polygon.id]: {
+    address: NATIVE_TOKEN_ADDRESS,
+    symbol: 'MATIC',
+    name: 'Polygon',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/4713/small/matic-token-icon.png',
+    supportsGasless: false,
+  },
+  [arbitrum.id]: {
+    address: NATIVE_TOKEN_ADDRESS,
+    symbol: 'ETH',
+    name: 'Ethereum',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+    supportsGasless: false,
+  },
+  [bsc.id]: {
+    address: NATIVE_TOKEN_ADDRESS,
+    symbol: 'BNB',
+    name: 'BNB',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png',
+    supportsGasless: false,
+  },
+  [base.id]: {
+    address: NATIVE_TOKEN_ADDRESS,
+    symbol: 'ETH',
+    name: 'Ethereum',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+    supportsGasless: false,
+  },
+  [optimism.id]: {
+    address: NATIVE_TOKEN_ADDRESS,
+    symbol: 'ETH',
+    name: 'Ethereum',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+    supportsGasless: false,
+  },
+};
+
 // Gasless tokens cache with 5-minute TTL
 const gaslessTokensCache = new Map<number, { tokens: Address[]; timestamp: number }>();
 const GASLESS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -461,6 +523,12 @@ export class ZeroXSwapService {
         console.log(`Loaded ${tokenMetadata.length} gasless tokens for chain ${chainId}: ${tokenListCount} from token list, ${staticCount} from static, ${unknownCount} unknown`);
       }
 
+      // Prepend native token for this chain if it exists
+      const nativeToken = NATIVE_TOKENS[chainId];
+      if (nativeToken) {
+        return [nativeToken, ...tokenMetadata];
+      }
+
       return tokenMetadata;
     } catch (error) {
       console.error('Failed to fetch gasless tokens, using fallback list:', error);
@@ -482,7 +550,15 @@ export class ZeroXSwapService {
         ],
       };
 
-      return fallbackTokens[chainId] || fallbackTokens[mainnet.id];
+      const fallbackList = fallbackTokens[chainId] || fallbackTokens[mainnet.id];
+
+      // Prepend native token for fallback as well
+      const nativeToken = NATIVE_TOKENS[chainId];
+      if (nativeToken) {
+        return [nativeToken, ...fallbackList];
+      }
+
+      return fallbackList;
     }
   }
 
