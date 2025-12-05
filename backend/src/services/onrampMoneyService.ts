@@ -1,5 +1,5 @@
-import { db } from '../db/index.js';
-import { onrampOrders } from '@shared/schema/swap.schema.js';
+import { db } from '../db/index';
+import { onrampOrders } from '@shared/schema/swap.schema';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import crypto from 'crypto';
@@ -264,9 +264,9 @@ export class OnRampMoneyService {
     return {
       id: order.id,
       userId: order.userId,
-      fiatAmount: parseFloat(order.fiatAmount),
+      fiatAmount: typeof order.fiatAmount === 'string' ? parseFloat(order.fiatAmount) : Number(order.fiatAmount),
       fiatCurrency: order.fiatCurrency,
-      cryptoAmount: order.cryptoAmount ? parseFloat(order.cryptoAmount) : undefined,
+      cryptoAmount: order.cryptoAmount ? (typeof order.cryptoAmount === 'string' ? parseFloat(order.cryptoAmount) : Number(order.cryptoAmount)) : undefined,
       cryptoCurrency: order.cryptoCurrency,
       network: order.network,
       walletAddress: order.walletAddress,
@@ -429,9 +429,9 @@ export class OnRampMoneyService {
     return {
       id: updatedOrder.id,
       userId: updatedOrder.userId,
-      fiatAmount: parseFloat(updatedOrder.fiatAmount),
+      fiatAmount: typeof updatedOrder.fiatAmount === 'string' ? parseFloat(updatedOrder.fiatAmount) : Number(updatedOrder.fiatAmount),
       fiatCurrency: updatedOrder.fiatCurrency,
-      cryptoAmount: updatedOrder.cryptoAmount ? parseFloat(updatedOrder.cryptoAmount) : undefined,
+      cryptoAmount: updatedOrder.cryptoAmount ? (typeof updatedOrder.cryptoAmount === 'string' ? parseFloat(updatedOrder.cryptoAmount) : Number(updatedOrder.cryptoAmount)) : undefined,
       cryptoCurrency: updatedOrder.cryptoCurrency,
       network: updatedOrder.network,
       walletAddress: updatedOrder.walletAddress,
@@ -461,9 +461,9 @@ export class OnRampMoneyService {
     return {
       id: order.id,
       userId: order.userId,
-      fiatAmount: parseFloat(order.fiatAmount),
+      fiatAmount: typeof order.fiatAmount === 'string' ? parseFloat(order.fiatAmount) : Number(order.fiatAmount),
       fiatCurrency: order.fiatCurrency,
-      cryptoAmount: order.cryptoAmount ? parseFloat(order.cryptoAmount) : undefined,
+      cryptoAmount: order.cryptoAmount ? (typeof order.cryptoAmount === 'string' ? parseFloat(order.cryptoAmount) : Number(order.cryptoAmount)) : undefined,
       cryptoCurrency: order.cryptoCurrency,
       network: order.network,
       walletAddress: order.walletAddress,
@@ -490,9 +490,9 @@ export class OnRampMoneyService {
     return orders.map((order) => ({
       id: order.id,
       userId: order.userId,
-      fiatAmount: parseFloat(order.fiatAmount),
+      fiatAmount: typeof order.fiatAmount === 'string' ? parseFloat(order.fiatAmount) : Number(order.fiatAmount),
       fiatCurrency: order.fiatCurrency,
-      cryptoAmount: order.cryptoAmount ? parseFloat(order.cryptoAmount) : undefined,
+      cryptoAmount: order.cryptoAmount ? (typeof order.cryptoAmount === 'string' ? parseFloat(order.cryptoAmount) : Number(order.cryptoAmount)) : undefined,
       cryptoCurrency: order.cryptoCurrency,
       network: order.network,
       walletAddress: order.walletAddress,
@@ -514,14 +514,14 @@ export class OnRampMoneyService {
       .from(onrampOrders)
       .where(eq(onrampOrders.walletAddress, walletAddress))
       .orderBy(onrampOrders.createdAt)
-      .limit(limit);
+      .limit(limit) as typeof onrampOrders.$inferSelect[];
 
     return orders.map((order) => ({
       id: order.id,
       userId: order.userId,
-      fiatAmount: parseFloat(order.fiatAmount),
+      fiatAmount: typeof order.fiatAmount === 'string' ? parseFloat(order.fiatAmount) : Number(order.fiatAmount),
       fiatCurrency: order.fiatCurrency,
-      cryptoAmount: order.cryptoAmount ? parseFloat(order.cryptoAmount) : undefined,
+      cryptoAmount: order.cryptoAmount ? (typeof order.cryptoAmount === 'string' ? parseFloat(order.cryptoAmount) : Number(order.cryptoAmount)) : undefined,
       cryptoCurrency: order.cryptoCurrency,
       network: order.network,
       walletAddress: order.walletAddress,
