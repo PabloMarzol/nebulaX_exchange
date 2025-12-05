@@ -5,6 +5,10 @@ import { onrampMoneyService } from '../services/onrampMoneyService.js';
 import { db } from '../db/index.js';
 import { swapOrders } from '@shared/schema/swap.schema.js';
 import { z } from 'zod';
+import dotenv from "dotenv";
+
+dotenv.config()
+
 
 const router = Router();
 
@@ -492,6 +496,38 @@ router.get('/onramp/callback', async (req, res, next) => {
     );
 
     res.redirect(redirectUrl.toString());
+  }
+});
+
+/**
+ * POST /api/swap/onramp/webhook
+ * Handle OnRamp Money Webhook
+ */
+router.post('/onramp/webhook', async (req, res) => {
+  try {
+    const payload = req.headers['x-onramp-payload'] as string;
+    const signature = req.headers['x-onramp-signature'] as string;
+
+    if (!payload || !signature) {
+      return res.status(400).json({ success: false, error: 'Missing headers' });
+    }
+
+    // Verify signature
+    const isValid = onrampMoneyService.verifyWebhookSignature(payload, signature);
+    if (!isValid) {
+      return res.status(403).json({ success: false, error: 'Invalid signature' });
+    }
+
+    // Decode payload
+    const decoded = JSON.parse(Buffer.from(payload, 'base64').toString());
+    
+    // Handle the webhook data
+    await onrampMoneyService.handleWebhook(decoded);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('OnRamp webhook error:', error);
+    res.status(500).json({ success: false, error: 'Webhook processing failed' });
   }
 });
 

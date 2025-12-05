@@ -3,6 +3,9 @@ import { onrampOrders } from '@shared/schema/swap.schema.js';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import crypto from 'crypto';
+import dotenv from "dotenv";
+
+dotenv.config()
 
 const ONRAMP_BASE_URL = env.ONRAMP_BASE_URL || 'https://onramp.money';
 
@@ -99,7 +102,12 @@ export class OnRampMoneyService {
     const idempotencyKey = crypto.randomUUID();
 
     // Determine appId based on environment
-    const appId = env.ONRAMP_APP_ID || (env.NODE_ENV === 'production' ? '1' : '2');
+    // User Update: Force LIVE/PRODUCTION logic only. Ignore testnet.
+    const appId = env.ONRAMP_APP_LIVE_ID || env.ONRAMP_APP_ID;
+
+    if (!appId) {
+      throw new Error('OnRamp App ID not configured (ONRAMP_APP_LIVE_ID)');
+    }
 
     // Build OnRamp URL with parameters
     const urlParams = new URLSearchParams({
@@ -161,7 +169,90 @@ export class OnRampMoneyService {
   }
 
   /**
-   * Handle webhook callback from OnRamp Money
+   * Verify webhook signature
+   */
+  verifyWebhookSignature(payload: string, signature: string): boolean {
+    const secret = env.ONRAMP_APP_LIVE_SECRET_KEY;
+    if (!secret) return false;
+
+    const computedSignature = crypto.createHmac('sha512', secret).update(payload).digest('hex');
+    return computedSignature === signature;
+  }
+
+  /**
+   * Handle Webhook event from OnRamp Money
+   */
+  async handleWebhook(data: any): Promise<void> {
+    const {
+      orderId,
+      merchantRecognitionId,
+      status, // numeric status
+      actualCryptoAmount,
+      transactionHash,
+      onRampFee,
+      gatewayFee,
+      networkFee,
+    } = data;
+
+    if (!merchantRecognitionId) {
+      throw new Error('Missing merchantRecognitionId in webhook data');
+    }
+
+    // Find order by merchant recognition ID
+    const [order] = await db
+      .select()
+      .from(onrampOrders)
+      .where(eq(onrampOrders.merchantRecognitionId, merchantRecognitionId))
+      .limit(1);
+
+    if (!order) {
+      console.warn(`Webhook: Order not found for merchantRecognitionId: ${merchantRecognitionId}`);
+      return;
+    }
+
+    const updates: any = {
+      updatedAt: new Date(),
+    };
+
+    if (orderId) updates.providerOrderId = orderId.toString();
+
+    // Status Mapping (See statusCode.md)
+    // 4, 15, 19 => Success/Withdrawal Complete
+    const successStatuses = [4, 15, 19, 40, 41];
+    const failedStatuses = [-1, -2, -3, -4];
+    const processingStatuses = [0, 1, 2, 3, 5, 10, 11, 12, 13, 14, 16, 17, 18, 30, 31, 32, 33, 34, 35, 36];
+
+    let newStatus = order.status;
+    const statusNum = Number(status);
+
+    if (successStatuses.includes(statusNum)) {
+      newStatus = 'completed';
+      updates.completedAt = new Date();
+    } else if (failedStatuses.includes(statusNum)) {
+      newStatus = 'failed';
+    } else if (processingStatuses.includes(statusNum)) {
+      newStatus = 'processing';
+    }
+
+    updates.status = newStatus;
+
+    if (actualCryptoAmount) updates.cryptoAmount = actualCryptoAmount.toString();
+
+    const metadata = order.metadata ? JSON.parse(order.metadata) : {};
+    if (transactionHash) metadata.txHash = transactionHash;
+    if (onRampFee) metadata.onRampFee = onRampFee;
+    if (gatewayFee) metadata.gatewayFee = gatewayFee;
+    if (networkFee) metadata.networkFee = networkFee;
+    metadata.webhookReceivedAt = new Date().toISOString();
+
+    updates.metadata = JSON.stringify(metadata);
+
+    await db.update(onrampOrders).set(updates).where(eq(onrampOrders.id, order.id));
+  }
+
+  /**
+   * Handle redirect callback (UI only)
+   * We trust this less than webhook, but useful for immediate UI feedback.
    */
   async handleCallback(data: {
     orderId?: string;
@@ -176,7 +267,6 @@ export class OnRampMoneyService {
       throw new Error('Missing merchantRecognitionId in callback');
     }
 
-    // Find order by merchant recognition ID
     const [order] = await db
       .select()
       .from(onrampOrders)
@@ -187,35 +277,31 @@ export class OnRampMoneyService {
       throw new Error(`Order not found for merchantRecognitionId: ${merchantRecognitionId}`);
     }
 
-    // Update order with callback data
     const updates: any = {
       updatedAt: new Date(),
     };
 
-    if (orderId) {
-      updates.providerOrderId = orderId;
-    }
+    if (orderId) updates.providerOrderId = orderId;
 
+    // Use status from callback but treat 'success' as 'processing' or 'completed' depending on trust?
+    // Let's rely on mapping, but note that this is spoofable.
     if (status) {
-      // Map OnRamp status to our status
       const statusMap: Record<string, string> = {
-        success: 'completed',
+        success: 'completed', // In Hosted Mode pending completion, they might send success?
         completed: 'completed',
         pending: 'processing',
         processing: 'processing',
         failed: 'failed',
-        expired: 'failed',
+        cancelled: 'failed',
       };
-      updates.status = statusMap[status.toLowerCase()] || 'processing';
-
-      if (updates.status === 'completed') {
-        updates.completedAt = new Date();
+      // Only update if not already failed/completed to avoid overwriting final states with potential spoofed data
+      if (order.status !== 'completed' && order.status !== 'failed') {
+          updates.status = statusMap[status.toLowerCase()] || 'processing';
+          if (updates.status === 'completed') updates.completedAt = new Date();
       }
     }
 
-    if (cryptoAmount) {
-      updates.cryptoAmount = cryptoAmount;
-    }
+    if (cryptoAmount) updates.cryptoAmount = cryptoAmount;
 
     if (txHash) {
       const metadata = order.metadata ? JSON.parse(order.metadata) : {};
