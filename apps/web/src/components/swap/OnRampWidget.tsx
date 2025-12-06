@@ -1,10 +1,192 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ExternalLink, CreditCard, Building2, Loader2, ArrowRight } from 'lucide-react';
+import { ExternalLink, CreditCard, Building2, Loader2, ArrowRight, Clock, CheckCircle, Shield, ShoppingCart, PartyPopper } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card } from '../ui/card';
-import { useCreateOnRampOrder, useOnRampCurrencies, useOnRampCryptos, useOnRampQuote } from '../../hooks/useSwap';
+import { useCreateOnRampOrder, useOnRampCurrencies, useOnRampCryptos, useOnRampQuote, useOnRampOrder } from '../../hooks/useSwap';
+
+// --- Sub-components (kept in same file for simplicity) ---
+
+function PaymentInstructions({ 
+  depositAddress, 
+  endTime, 
+  fiatAmount, 
+  fiatCurrency, 
+  paymentMethod 
+}: { 
+  depositAddress: string; 
+  endTime: Date; 
+  fiatAmount: number; 
+  fiatCurrency: string; 
+  paymentMethod: number;
+}) {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const end = new Date(endTime).getTime();
+      const distance = end - now;
+
+      if (distance < 0) {
+        setTimeLeft('Expired');
+        clearInterval(timer);
+      } else {
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+        setTimeLeft(`${minutes}m ${seconds}s`);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [endTime]);
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-muted rounded-lg border border-border">
+        <h3 className="text-sm font-semibold mb-2">Payment Instructions</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground uppercase">Deposit Address</label>
+            <div className="flex items-center gap-2 mt-1">
+              <code className="flex-1 p-2 bg-background border rounded text-xs font-mono break-all">
+                {depositAddress}
+              </code>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigator.clipboard.writeText(depositAddress)}
+              >
+                Copy
+              </Button>
+            </div>
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <div>
+              <label className="text-xs text-muted-foreground uppercase">Amount to Send</label>
+              <div className="font-bold text-lg">
+                {fiatAmount} {fiatCurrency}
+              </div>
+            </div>
+            
+            <div className="text-right">
+               <label className="text-xs text-muted-foreground uppercase">Time Remaining</label>
+               <div className="flex items-center gap-1 justify-end text-yellow-600 font-mono">
+                 <Clock className="w-4 h-4" />
+                 {timeLeft}
+               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="text-xs text-muted-foreground bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded text-center">
+        Please make the transfer of exactly <b>{fiatAmount} {fiatCurrency}</b> to the address above via {paymentMethod === 1 ? 'Instant Transfer (UPI/Card)' : 'Bank Transfer'}.
+      </div>
+    </div>
+  );
+}
+
+function OrderStatusTracker({ orderId, onKycRequired }: { orderId: string, onKycRequired: (url: string) => void }) {
+  const { data: order, isLoading, refetch } = useOnRampOrder(orderId);
+
+  // Poll for status
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+    }, 5000); // Poll every 5s
+    return () => clearInterval(interval);
+  }, [refetch]);
+
+  // Check for KYC requirement or Status changes
+  useEffect(() => {
+    if (order) {
+      const anyOrder = order as any; // Cast to access extra fields if types are strict
+      // Check detailedStatus or root properties depending on API
+      // Our modified route puts merged `providerStatus` and `kycNeeded` on root or detailedStatus.
+      // Let's check both or look at the response structure we built in swap.routes.ts
+      // In swap.routes.ts: order = { ...order, ...liveStatus ... }
+      
+      if (anyOrder.kycNeeded === 1 || anyOrder.kycNeeded === true) { // API usually uses 1/0
+         // Trigger KYC flow
+         if (anyOrder.onrampUrl) {
+             onKycRequired(anyOrder.onrampUrl);
+         }
+      }
+    }
+  }, [order, onKycRequired]);
+
+  if (isLoading) return <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-muted-foreground" /></div>;
+  if (!order) return null;
+
+  const status = (order as any).providerStatus || order.status; // Use live status if available
+  const statusNum = typeof status === 'number' ? status : -99; 
+  
+  // Status Mapping (approximate based on docs)
+  // 0: Created/Waiting Payment
+  // 1: Reference Claimed
+  // 2: Deposit Secured
+  // 3: Buying Crypto
+  // 4: Completed
+  // -3: Cancelled
+  
+  let label = 'Processing';
+  let icon = Loader2;
+  let color = 'text-blue-500';
+
+  if (status === 'completed' || statusNum === 4 || statusNum === 15) {
+      label = 'Completed';
+      icon = PartyPopper;
+      color = 'text-green-500';
+  } else if (status === 'failed' || statusNum < 0) {
+      label = 'Failed / Cancelled';
+      icon = Shield; // or AlertCircle
+      color = 'text-red-500';
+  } else if (statusNum === 0) {
+      label = 'Waiting for Payment';
+      icon = Clock;
+      color = 'text-yellow-500';
+  } else if (statusNum === 1) {
+      label = 'Payment Reference Claimed';
+      icon = CheckCircle;
+      color = 'text-blue-500';
+  } else if (statusNum === 2) {
+      label = 'Deposit Secured';
+      icon = Shield;
+      color = 'text-green-500';
+  } else if (statusNum === 3) {
+      label = 'Purchasing Crypto';
+      icon = ShoppingCart;
+      color = 'text-blue-500';
+  }
+
+  // If KYC needed, override status display?
+  if ((order as any).kycNeeded === 1) {
+      label = "Identity Verification Required";
+      icon = Shield;
+      color = "text-orange-500";
+  }
+
+  return (
+    <div className="p-4 border rounded-lg flex items-center gap-3">
+        <div className={`p-2 rounded-full bg-muted ${color}`}>
+            <icon.type className="w-5 h-5" />
+        </div>
+        <div className="flex-1">
+            <div className="font-medium">{label}</div>
+            <div className="text-xs text-muted-foreground">Order ID: {orderId}</div>
+            {(order as any).txHash && (
+                <div className="text-xs text-green-600 mt-1 truncate max-w-[200px]">
+                    Tx: {(order as any).txHash}
+                </div>
+            )}
+        </div>
+    </div>
+  );
+}
+
+// --- Main Widget ---
 
 export function OnRampWidget() {
   const { address, isConnected } = useAccount();
@@ -19,6 +201,12 @@ export function OnRampWidget() {
   const [walletAddress, setWalletAddress] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<1 | 2>(1); // 1 = Instant, 2 = Bank Transfer
   const [phoneNumber, setPhoneNumber] = useState('');
+
+  // Local state for active order tracking
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [activeOrderData, setActiveOrderData] = useState<any | null>(null);
+  const [showKycModal, setShowKycModal] = useState(false);
+  const [kycUrl, setKycUrl] = useState('');
 
   // Auto-fill wallet address from connected wallet
   useEffect(() => {
@@ -58,25 +246,7 @@ export function OnRampWidget() {
       return;
     }
 
-    // Open popup immediately to avoid blocker
-    const width = 500;
-    const height = 700;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-    const popup = window.open(
-      'about:blank',
-      'OnRampPayment',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`
-    );
-
-    if (!popup) {
-      alert('Please allow popups to proceed with payment');
-      return;
-    }
-
     try {
-      popup.document.write('<div style="display:flex;justify-content:center;align-items:center;height:100%;font-family:sans-serif;"><h3>Initiating Secure Payment...</h3></div>');
-
       const order = await createOrder.mutateAsync({
         fiatAmount: parseFloat(fiatAmount),
         fiatCurrency,
@@ -88,46 +258,83 @@ export function OnRampWidget() {
         language: 'en',
       });
 
-      // Redirect popup to OnRamp
-      popup.location.href = order.onrampUrl;
-
-      // Monitor for closure or success via postMessage (handled separately)
-      const timer = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(timer);
-          // Refresh history or check status if needed
-        }
-      }, 1000);
+      // Instead of redirecting, set active state to show instructions
+      setActiveOrderId(order.id);
+      setActiveOrderData(order); // Contains depositAddress, endTime, etc. provided by backend logic
 
     } catch (error) {
-      popup.close();
       console.error('Failed to create order:', error);
       alert(error instanceof Error ? error.message : 'Failed to create order');
     }
   };
 
-  // Listener for popup success meessage
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Validate origin if possible, or check message structure
-      if (event.data && (event.data.type === 'ONRAMP_COMPLETE' || event.data.type === 'ONRAMP_SUCCESS')) {
-        console.log('OnRamp Success:', event.data);
-        // Show success UI, confetti, etc.
-        // For now just alert, ideally update UI state
-        // You might want to invalidate queries here using queryClient if imported
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  const handleKycRequired = (url: string) => {
+      setKycUrl(url);
+      setShowKycModal(true);
+  };
+
+  const resetFlow = () => {
+      setActiveOrderId(null);
+      setActiveOrderData(null);
+      setShowKycModal(false);
+      setKycUrl('');
+  };
+
+  if (activeOrderId && activeOrderData) {
+      return (
+          <Card className="p-6 space-y-6">
+              <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold">Complete Payment</h2>
+                  <Button variant="ghost" size="sm" onClick={resetFlow}>New Order</Button>
+              </div>
+
+              {/* Status Tracker */}
+              <OrderStatusTracker orderId={activeOrderId} onKycRequired={handleKycRequired} />
+
+              {/* KYC Modal / Alert */}
+              {showKycModal && (
+                  <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg">
+                      <h3 className="font-semibold text-orange-800 mb-2">Identity Verification Required</h3>
+                      <p className="text-sm text-orange-700 mb-3">
+                          To process this transaction, one-time KYC verification is required.
+                      </p>
+                      <Button 
+                        className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                        onClick={() => {
+                            // Open KYC URL in popup
+                            const width = 500;
+                            const height = 700;
+                            const left = window.screen.width / 2 - width / 2;
+                            const top = window.screen.height / 2 - height / 2;
+                            window.open(kycUrl, 'OnRampKYC', `width=${width},height=${height},left=${left},top=${top}`);
+                        }}
+                      >
+                          Verify Identity Now <ExternalLink className="w-4 h-4 ml-2" />
+                      </Button>
+                  </div>
+              )}
+
+              {/* Payment Instructions (Only if not completed and address available) */}
+              {activeOrderData.depositAddress && (
+                  <PaymentInstructions 
+                    depositAddress={activeOrderData.depositAddress}
+                    endTime={new Date(activeOrderData.endTime)}
+                    fiatAmount={activeOrderData.fiatAmount}
+                    fiatCurrency={activeOrderData.fiatCurrency}
+                    paymentMethod={activeOrderData.paymentMethod}
+                  />
+              )}
+          </Card>
+      );
+  }
 
   return (
     <Card className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold mb-2">Buy Crypto with Fiat</h2>
+        <h2 className="text-2xl font-bold mb-2">Buy Crypto</h2>
         <p className="text-sm text-muted-foreground">
-          Purchase cryptocurrency using credit/debit card or bank transfer
+          Purchase cryptocurrency directly (Low Fee)
         </p>
       </div>
 
@@ -226,7 +433,7 @@ export function OnRampWidget() {
               className="flex items-center gap-2"
             >
               <CreditCard className="w-4 h-4" />
-              Instant (UPI/Card)
+              Instant
             </Button>
             <Button
               variant={paymentMethod === 2 ? 'default' : 'outline'}
@@ -288,7 +495,7 @@ export function OnRampWidget() {
         <span>Powered by OnRamp Money</span>
         <div className="flex items-center gap-1">
           <ExternalLink className="w-3 h-3" />
-          <span>Secure Popup</span>
+          <span>Whitelabel Integration</span>
         </div>
       </div>
     </Card>

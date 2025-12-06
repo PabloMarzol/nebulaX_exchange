@@ -8,7 +8,8 @@ import dotenv from "dotenv";
 dotenv.config()
 import axios from 'axios';
 
-const ONRAMP_BASE_URL = env.ONRAMP_BASE_URL || 'https://onramp.money';
+const ONRAMP_API_BASE_URL = 'https://api.onramp.money';
+const ONRAMP_WIDGET_BASE_URL = env.ONRAMP_BASE_URL || 'https://onramp.money';
 
 // Fiat currency type mapping for OnRamp Money
 const FIAT_TYPES: Record<string, number> = {
@@ -75,7 +76,9 @@ export interface OnRampOrder {
   walletAddress: string;
   paymentMethod: number;
   merchantRecognitionId: string;
-  onrampUrl: string;
+  onrampUrl?: string;
+  depositAddress?: string;
+  endTime?: Date;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -105,27 +108,53 @@ export class OnRampMoneyService {
     cryptoCurrency: string;
     network: string;
   }): Promise<OnRampQuote> {
+    console.log('[OnRampService] getQuote called with:', params);
     const { fiatAmount, fiatCurrency, cryptoCurrency, network } = params;
     const fiatType = FIAT_TYPES[fiatCurrency.toUpperCase()];
 
     if (!fiatType) {
+      console.error(`[OnRampService] Unsupported fiat currency: ${fiatCurrency}`);
       throw new Error(`Unsupported fiat currency: ${fiatCurrency}`);
+    }
+
+    // Try to resolve IDs
+    let coinId: number | undefined;
+    let chainId: number | undefined;
+    try {
+        const details = await this.getAssetDetails(cryptoCurrency, network);
+        if (details) {
+            coinId = Number(details.coinId);
+            chainId = Number(details.chainId);
+            console.log(`[OnRampService] Resolved details: coinId=${coinId}, chainId=${chainId}`);
+        } else {
+            console.warn(`[OnRampService] Could not resolve details for ${cryptoCurrency} on ${network}`);
+        }
+    } catch (e) {
+        console.warn('[OnRampService] Failed to resolve asset details for quote', e);
     }
 
     const payload = {
       timestamp: Date.now(),
       body: {
-        coinCode: cryptoCurrency.toLowerCase(),
-        network: network.toLowerCase(),
+        coinCode: cryptoCurrency.toUpperCase(), // Guide uses "USDT"
+        network: network.toUpperCase(),         // Guide uses "MATIC20"
+        // Add IDs if resolved
+        ...(coinId ? { coinId } : {}),
+        ...(chainId ? { chainId } : {}),
         fiatAmount: fiatAmount,
         fiatType: fiatType,
         type: 1, // 1 -> onramp
+        // Optional: AppId might be needed for context in some API versions
+        // appId: env.ONRAMP_APP_LIVE_ID 
       },
     };
 
     const secret = env.ONRAMP_APP_LIVE_SECRET_KEY;
     // Check if secret is available, if not, maybe throw or mock if in dev (but we want real quotes)
-    if (!secret) throw new Error('ONRAMP_APP_LIVE_SECRET_KEY not configured');
+    if (!secret) {
+        console.error('[OnRampService] ONRAMP_APP_LIVE_SECRET_KEY not configured');
+        throw new Error('ONRAMP_APP_LIVE_SECRET_KEY not configured');
+    }
 
     const apiKey = env.ONRAMP_API_LIVE_KEY;
     
@@ -142,9 +171,18 @@ export class OnRampMoneyService {
     const payloadBase64 = payloadBuffer.toString('base64');
     const signature = crypto.createHmac('sha512', secret).update(payloadBase64).digest('hex');
 
+    console.log('[OnRampService] Sending quote request to OnRamp:', {
+        url: `${ONRAMP_API_BASE_URL}/onramp/api/v2/common/transaction/quotes`,
+        payload: payload.body,
+        headers: {
+            'X-ONRAMP-APIKEY': apiKey ? '***' : 'missing',
+            'X-ONRAMP-SIGNATURE': signature ? '***' : 'missing',
+        }
+    });
+
     try {
       const response = await axios.post(
-        `${ONRAMP_BASE_URL}/onramp/api/v2/common/transaction/quotes`,
+        `${ONRAMP_API_BASE_URL}/onramp/api/v2/common/transaction/quotes`,
         payload.body, 
         {
           headers: {
@@ -157,6 +195,7 @@ export class OnRampMoneyService {
       );
 
       const data = response.data.data;
+      console.log('[OnRampService] Quote response received:', data);
       // data: { rate, quantity, onrampFee, clientFee, gatewayFee, gasFee }
       
       const onRampFeeTotal = (data.onrampFee || 0) + (data.clientFee || 0) + (data.gatewayFee || 0);
@@ -182,7 +221,7 @@ export class OnRampMoneyService {
   }
 
   /**
-   * Create a new OnRamp Money order
+   * Create a new OnRamp Money order via Direct API (Whitelabel Flow)
    */
   async createOrder(params: CreateOnRampOrderParams): Promise<OnRampOrder> {
     const {
@@ -192,91 +231,247 @@ export class OnRampMoneyService {
       cryptoCurrency,
       network,
       walletAddress,
-      paymentMethod,
-      phoneNumber,
-      language = 'en',
     } = params;
 
-    // Validate fiat currency
-    const fiatType = FIAT_TYPES[fiatCurrency.toUpperCase()];
-    if (!fiatType) {
-      throw new Error(`Unsupported fiat currency: ${fiatCurrency}. Supported: ${Object.keys(FIAT_TYPES).join(', ')}`);
+    // 1. Get Asset Details (CoinID, ChainID) and Crypto Amount
+    const quote = await this.getQuote({
+      fiatAmount,
+      fiatCurrency,
+      cryptoCurrency,
+      network
+    });
+
+    const assetDetails = await this.getAssetDetails(cryptoCurrency, network);
+    if (!assetDetails) {
+      throw new Error(`Asset not supported: ${cryptoCurrency} on ${network}`);
     }
 
-    // Validate wallet address (basic Ethereum address validation)
-    if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-      throw new Error('Invalid wallet address format');
-    }
+    const { coinId, chainId } = assetDetails;
 
-    // Generate unique merchant recognition ID
+    // Generate uniquely identifiable ID
     const merchantRecognitionId = `${walletAddress}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     const idempotencyKey = crypto.randomUUID();
 
-    // Determine appId based on environment
-    // User Update: Force LIVE/PRODUCTION logic only. Ignore testnet.
     const appId = env.ONRAMP_APP_LIVE_ID || env.ONRAMP_APP_ID;
+    const apiKey = env.ONRAMP_API_LIVE_KEY;
+    const secret = env.ONRAMP_APP_LIVE_SECRET_KEY;
 
-    if (!appId) {
-      throw new Error('OnRamp App ID not configured (ONRAMP_APP_LIVE_ID)');
+    if (!appId || !apiKey || !secret) {
+      throw new Error('OnRamp App ID, API Key, or Secret Key not configured');
     }
 
-    // Build OnRamp URL with parameters
-    const urlParams = new URLSearchParams({
-      appId,
-      fiatType: fiatType.toString(),
-      fiatAmount: fiatAmount.toString(),
-      cryptoAmount: '0', // Let OnRamp calculate
-      coinCode: cryptoCurrency.toLowerCase(),
-      network: network.toLowerCase(),
-      walletAddress,
-      paymentMethod: paymentMethod.toString(),
-      merchantRecognitionId,
-      redirectURL: `${env.API_URL}/api/swap/onramp/callback`,
-      ...(phoneNumber && { phone: encodeURIComponent(phoneNumber) }),
-      language,
-    });
-
-    const onrampUrl = `${ONRAMP_BASE_URL}/main/buy/?${urlParams}`;
-
-    // Save order to database
-    const [order] = await db
-      .insert(onrampOrders)
-      .values({
-        userId,
-        idempotencyKey,
-        fiatAmount: fiatAmount.toString(),
-        fiatCurrency: fiatCurrency.toUpperCase(),
-        cryptoCurrency: cryptoCurrency.toUpperCase(),
-        network,
-        walletAddress,
-        paymentMethod,
-        merchantRecognitionId,
-        onrampUrl,
-        status: 'pending',
-        metadata: JSON.stringify({
-          appId,
-          language,
-          phoneNumber,
-        }),
-      })
-      .returning();
-
-    return {
-      id: order.id,
-      userId: order.userId,
-      fiatAmount: typeof order.fiatAmount === 'string' ? parseFloat(order.fiatAmount) : Number(order.fiatAmount),
-      fiatCurrency: order.fiatCurrency,
-      cryptoAmount: order.cryptoAmount ? (typeof order.cryptoAmount === 'string' ? parseFloat(order.cryptoAmount) : Number(order.cryptoAmount)) : undefined,
-      cryptoCurrency: order.cryptoCurrency,
-      network: order.network,
-      walletAddress: order.walletAddress,
-      paymentMethod: order.paymentMethod,
-      merchantRecognitionId: order.merchantRecognitionId!,
-      onrampUrl: order.onrampUrl!,
-      status: order.status,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
+    // 2. Call Create Order API
+    const body = {
+      coinId,
+      chainId,
+      coinAmount: quote.cryptoAmount.toString(), // Ensure string as per docs
+      address: walletAddress, 
+      fiatAmount,
+      fiatType: FIAT_TYPES[fiatCurrency.toUpperCase()], 
+      appId: appId
     };
+
+    // Construct payload wrapper for signature
+    const payloadWrapper = {
+      timestamp: Date.now(),
+      body: body,
+    };
+
+    const payloadBuffer = Buffer.from(JSON.stringify(payloadWrapper));
+    const payloadBase64 = payloadBuffer.toString('base64');
+    const signature = crypto.createHmac('sha512', secret).update(payloadBase64).digest('hex');
+
+    console.log('Creating OnRamp Order with body:', body);
+
+    try {
+        const response = await axios.post(
+            `${ONRAMP_API_BASE_URL}/onramp-merchants/widget/createOrder`,
+            body,
+            {
+                headers: {
+                    'Content-Type': 'application/json;charset=UTF-8',
+                    'X-ONRAMP-APIKEY': apiKey,
+                    'X-ONRAMP-PAYLOAD': payloadBase64,
+                    'X-ONRAMP-SIGNATURE': signature,
+                },
+            }
+        );
+
+        const { orderId, address: depositAddress, endTime } = response.data.data;
+
+        // Generate OnRamp URL as backup/KYC entry point
+        const urlParams = new URLSearchParams({
+            appId,
+            fiatType: FIAT_TYPES[fiatCurrency.toUpperCase()].toString(),
+            fiatAmount: fiatAmount.toString(),
+            coinCode: cryptoCurrency.toLowerCase(),
+            network: network.toLowerCase(),
+            walletAddress,
+            paymentMethod: params.paymentMethod.toString(),
+            merchantRecognitionId,
+            redirectURL: `${env.API_URL}/api/swap/onramp/callback`,
+            language: 'en',
+        });
+        const onrampUrl = `${ONRAMP_WIDGET_BASE_URL}/main/buy/?${urlParams}`;
+
+        // Save into DB
+        const [order] = await db
+        .insert(onrampOrders)
+        .values({
+            userId,
+            idempotencyKey,
+            fiatAmount: fiatAmount.toString(),
+            fiatCurrency: fiatCurrency.toUpperCase(),
+            cryptoAmount: quote.cryptoAmount.toString(),
+            cryptoCurrency: cryptoCurrency.toUpperCase(),
+            network,
+            walletAddress,
+            paymentMethod: params.paymentMethod,
+            merchantRecognitionId, 
+            providerOrderId: orderId.toString(),
+            onrampUrl, // Stored for KYC link
+            status: 'pending',
+            metadata: JSON.stringify({
+                appId,
+                depositAddress,
+                endTime,
+                initialQuote: quote
+            }),
+        })
+        .returning();
+
+        return {
+            id: order.id,
+            userId: order.userId,
+            fiatAmount: Number(order.fiatAmount),
+            fiatCurrency: order.fiatCurrency,
+            cryptoAmount: Number(quote.cryptoAmount),
+            cryptoCurrency: order.cryptoCurrency,
+            network: order.network,
+            walletAddress: order.walletAddress,
+            paymentMethod: order.paymentMethod,
+            merchantRecognitionId,
+            depositAddress,
+            endTime: new Date(endTime * 1000), // Unix to JS Date
+            status: order.status,
+            createdAt: order.createdAt,
+            updatedAt: order.updatedAt,
+        };
+
+    } catch (error: any) {
+        console.error('OnRamp Create Order Error:', error.response?.data || error.message);
+        throw new Error(`Failed to create order: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Poll Order Status
+   */
+  async pollOrderStatus(orderId: string): Promise<any> {
+      const apiKey = env.ONRAMP_API_LIVE_KEY;
+      try {
+          const response = await axios.post(
+              `${ONRAMP_API_BASE_URL}/onramp-merchants/widget/getOrder`,
+              { orderId },
+              {
+                  headers: {
+                      'X-ONRAMP-APIKEY': apiKey,
+                      'Content-Type': 'application/json',
+                  },
+              }
+          );
+          
+          return response.data.data; 
+      } catch (error: any) {
+          console.error('OnRamp Poll Status Error:', error.response?.data || error.message);
+          throw error;
+      }
+  }
+
+  /**
+   * Extend Order Time
+   */
+  async extendOrderTime(orderId: string): Promise<boolean> {
+      const apiKey = env.ONRAMP_API_LIVE_KEY;
+      try {
+        const response = await axios.post(
+          `${ONRAMP_API_BASE_URL}/onramp-merchants/widget/extendTime`,
+          { orderId },
+          {
+            headers: {
+              'X-ONRAMP-APIKEY': apiKey,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        return response.data.success;
+      } catch (error) {
+        console.error('OnRamp Extend Time Error:', error);
+        return false;
+      }
+  }
+
+  /**
+   * Cancel Order
+   */
+  async cancelOrder(orderId: string): Promise<boolean> {
+      const apiKey = env.ONRAMP_API_LIVE_KEY;
+      try {
+        const response = await axios.post(
+          `${ONRAMP_API_BASE_URL}/onramp-merchants/widget/cancelOrder`,
+          { orderId },
+          {
+            headers: {
+              'X-ONRAMP-APIKEY': apiKey,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        return response.data.success;
+      } catch (error) {
+        console.error('OnRamp Cancel Order Error:', error);
+        return false;
+      }
+  }
+
+  /**
+   * Helper to get coinId and chainId
+   */
+  async getAssetDetails(symbol: string, network: string): Promise<{ coinId: any, chainId: number } | null> {
+      try {
+          const response = await axios.get(`${ONRAMP_API_BASE_URL}/onramp/api/v2/sell/public/allConfig`);
+          const data = response.data.data;
+          
+          const coinData = data.allCoinConfig[symbol.toLowerCase()] || data.allCoinConfig[symbol.toUpperCase()];
+          
+          if (!coinData) return null;
+
+          let chainId: number | undefined;
+          
+          for (const [id, netConfig] of Object.entries(data.networkConfig) as [string, any][]) {
+              if (netConfig.chainSymbol.toLowerCase() === network.toLowerCase()) {
+                  chainId = Number(id);
+                  break;
+              }
+          }
+
+          if (chainId === undefined) return null;
+
+          if (!coinData.networks.includes(chainId)) return null;
+
+          // Try to find coinId. If not present, use the symbol or look for other fields.
+          // In some versions of this API, the symbol IS the identifier. 
+          // But 'coinId' parameter implies ID.
+          // Let's use coinData.coinId if available, else assume the coinCode is what they want if they documentation is loose,
+          // OR try to map. 
+          // However, the safest bet is checking if an ID field exists.
+          const coinId = coinData.coinId || coinData.id || symbol.toUpperCase();
+          
+          return { coinId, chainId };
+      } catch (e) {
+          console.error("Error fetching asset details", e);
+          return null;
+      }
   }
 
   /**
@@ -560,7 +755,7 @@ export class OnRampMoneyService {
     currencies?: Array<{ code: string; name: string; type: number }>;
   }> {
     try {
-      const response = await axios.get('https://api.onramp.money/onramp/api/v2/sell/public/allConfig');
+      const response = await axios.get(`${ONRAMP_API_BASE_URL}/onramp/api/v2/sell/public/allConfig`);
       const data = response.data.data;
 
       // Debug: Log the response structure

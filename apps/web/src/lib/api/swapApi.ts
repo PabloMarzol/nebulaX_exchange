@@ -109,6 +109,21 @@ export interface CryptoWithNetworks {
   networks: Array<{ code: string; name: string }>;
 }
 
+// Missing interface - add this
+export interface OnRampQuote {
+  fiatAmount: number;
+  fiatCurrency: string;
+  cryptoAmount: number;
+  cryptoCurrency: string;
+  rate: number;
+  fees: {
+    onRamp: number;
+    network: number;
+    total: number;
+  };
+  validUntil: Date;
+}
+
 // 0x Protocol Swap API
 export const swapApi = {
   // Get swap quote
@@ -457,5 +472,28 @@ export const onrampApi = {
       networks: response.data.networks,
       currencies: response.data.currencies,
     };
+  },
+
+  // Get quote - ADDED THIS!
+  async getQuote(
+    params: {
+      fiatAmount: number;
+      fiatCurrency: string;
+      cryptoCurrency: string;
+      network: string;
+    }
+  ): Promise<OnRampQuote> {
+    console.log('[swapApi] getQuote calling API with:', params);
+    try {
+      const response = await axios.post<{ success: boolean; quote: OnRampQuote }>(
+        `${API_URL}/api/swap/onramp/quote`,
+        params
+      );
+      console.log('[swapApi] getQuote success:', response.data);
+      return response.data.quote;
+    } catch (e) {
+      console.error('[swapApi] getQuote failed:', e);
+      throw e;
+    }
   },
 };

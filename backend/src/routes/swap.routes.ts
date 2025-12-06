@@ -565,13 +565,36 @@ router.get('/onramp/order/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const order = await onrampMoneyService.getOrderById(id);
+    let order = await onrampMoneyService.getOrderById(id);
 
     if (!order) {
       return res.status(404).json({
         success: false,
         error: 'Order not found',
       });
+    }
+
+    // Poll for live status if pending or processing
+    if (['pending', 'processing'].includes(order.status) && (order as any).providerOrderId) {
+        try {
+            const providerOrderId = (order as any).providerOrderId;
+            if (providerOrderId) {
+                const liveStatus = await onrampMoneyService.pollOrderStatus(providerOrderId);
+                // Merge live attributes like kycNeeded
+                order = {
+                    ...order,
+                    ...liveStatus, // This might overwrite some fields, be careful. 
+                    // status from API is numeric usually, strict typing might conflict.
+                    // We'll return it as 'detailedStatus' or mix it in if we cast.
+                    // For safety, let's attach it as detailedStatus or similar property OR normalize it.
+                    kycNeeded: liveStatus.kycNeeded,
+                    providerStatus: liveStatus.status,
+                    onrampUrl: liveStatus.onrampUrl || order.onrampUrl // Update status URL if provided
+                };
+            }
+        } catch (e) {
+            console.warn("Failed to poll live order status", e);
+        }
     }
 
     res.json({

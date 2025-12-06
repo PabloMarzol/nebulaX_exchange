@@ -99,11 +99,16 @@ router.post('/submit', authenticate, async (req, res, next) => {
     }
 
     // Create embedded order record
+    // For OnRamp Money, order.id is the DB ID, but we also have providerOrderId in the object if we used createDirectOrder logic?
+    // Actually, createOrder returns the DB object structure.
+    // Let's ensure we capture the external ID.
+    const providerOrderId = (order as any).providerOrderId || order.id;
+
     const [embeddedOrder] = await db
       .insert(onrampOrders)
       .values({
         userId: req.user!.id,
-        providerOrderId: order.id,
+        providerOrderId: providerOrderId.toString(),
         provider: data.provider,
         fiatAmount: data.fiatAmount.toString(),
         fiatCurrency: data.fiatCurrency,
@@ -126,7 +131,10 @@ router.post('/submit', authenticate, async (req, res, next) => {
         provider: data.provider,
         status: 'pending',
         orderData: order,
-        embeddedUrl: data.provider === 'meld' ? await getMeldEmbedUrl(order) : order.onrampUrl,
+        embeddedUrl: data.provider === 'meld' ? await getMeldEmbedUrl(order) : (order as any).onrampUrl,
+        // Include direct API details suitable for whitelabel
+        depositAddress: (order as any).depositAddress,
+        endTime: (order as any).endTime,
       },
     });
   } catch (error) {
@@ -156,10 +164,20 @@ router.get('/status/:orderId', authenticate, async (req, res, next) => {
     }
 
     // Get detailed status from provider
-    let detailedStatus = {};
+    let detailedStatus: any = {};
     
     if (order.provider === 'onramp_money' && order.providerOrderId) {
-      detailedStatus = await onrampMoneyService.getOrderById(order.providerOrderId);
+      // Use pollOrderStatus to get fresh data from API
+      try {
+        detailedStatus = await onrampMoneyService.pollOrderStatus(order.providerOrderId);
+        // Also update local status if changed? 
+        // We could, but let's leave that to webhooks/callbacks to be the source of truth for DB,
+        // while this endpoint returns live data for UI.
+        // However, if we get KYC needed, passing it to UI is critical.
+      } catch (e) {
+        console.error('Failed to poll status', e);
+        // Fallback or ignore
+      }
     } else if (order.provider === 'meld') {
       detailedStatus = await getMeldOrderStatus(order.providerOrderId);
     }
@@ -176,7 +194,7 @@ router.get('/status/:orderId', authenticate, async (req, res, next) => {
         network: order.network,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
-        detailedStatus,
+        detailedStatus, // Now contains { status, kycNeeded, ... } from OnRamp API
       },
     });
   } catch (error) {

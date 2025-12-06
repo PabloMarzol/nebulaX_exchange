@@ -47,7 +47,10 @@ export function useOnRampQuote(
 ) {
   return useQuery({
     queryKey: ['onramp-quote', params],
-    queryFn: () => (params ? onrampApi.getQuote(params) : Promise.reject('Missing params')),
+    queryFn: () => {
+        console.log('[useOnRampQuote] Query function called with params:', params);
+        return params ? onrampApi.getQuote(params) : Promise.reject('Missing params');
+    },
     enabled: !!params && params.fiatAmount > 0,
     staleTime: 30000, // 30 seconds
     refetchInterval: 60000,
