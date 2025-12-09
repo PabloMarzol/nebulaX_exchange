@@ -157,15 +157,7 @@ export class OnRampMoneyService {
     }
 
     const apiKey = env.ONRAMP_API_LIVE_KEY;
-    
-    // In createOrder, we used ONRAMP_APP_LIVE_ID. 
-    // The API requires X-ONRAMP-APIKEY and X-ONRAMP-SIGNATURE.
-    // Let's assume ONRAMP_APP_LIVE_KEY corresponds to the API Key and ONRAMP_APP_LIVE_ID is the App ID.
-    // BUT createOrder uses only AppID in URL. 
-    // The Docs say: "Your api key". 
-    // I will check env.ts to see what keys we have.
 
-    // Let's assume for now and I will check config next.
     
     const payloadBuffer = Buffer.from(JSON.stringify(payload));
     const payloadBase64 = payloadBuffer.toString('base64');
@@ -221,6 +213,77 @@ export class OnRampMoneyService {
   }
 
   /**
+   * Create an intent for OnRamp Money Widget
+   */
+  async createIntent(params: {
+    cryptoCurrency: string;
+    network: string;
+    cryptoAmount: number;
+    redirectURL?: string;
+    assetDescription?: string;
+    assetImage?: string;
+    language?: string;
+  }): Promise<{ hash: string }> {
+    const { cryptoCurrency, network, cryptoAmount, redirectURL, assetDescription, assetImage, language } = params;
+
+    const assetDetails = await this.getAssetDetails(cryptoCurrency, network);
+    if (!assetDetails) {
+      throw new Error(`Asset not supported: ${cryptoCurrency} on ${network}`);
+    }
+
+    const { coinId, chainId } = assetDetails;
+    const apiKey = env.ONRAMP_API_LIVE_KEY;
+    const secret = env.ONRAMP_APP_LIVE_SECRET_KEY;
+
+    if (!apiKey || !secret) {
+      throw new Error('OnRamp API Key or Secret Key not configured');
+    }
+
+    const body = {
+      coinId: coinId.toString(),
+      chainId: chainId.toString(),
+      coinAmount: cryptoAmount.toString(),
+      redirectURL,
+      assetDescription,
+      assetImage,
+      lang: language
+    };
+
+    const payload = {
+      timestamp: Date.now(),
+      body
+    };
+
+    const payloadBuffer = Buffer.from(JSON.stringify(payload));
+    const payloadBase64 = payloadBuffer.toString('base64');
+    const signature = crypto.createHmac('sha512', secret).update(payloadBase64).digest('hex');
+
+    console.log('[OnRampService] Creating Intent with body:', body);
+
+    try {
+      const response = await axios.post(
+        `${ONRAMP_API_BASE_URL}/onramp-merchants/widget/createIntent`,
+        body,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json;charset=UTF-8',
+            'X-ONRAMP-APIKEY': apiKey,
+            'X-ONRAMP-PAYLOAD': payloadBase64,
+            'X-ONRAMP-SIGNATURE': signature,
+          },
+        }
+      );
+
+      console.log('[OnRampService] Create Intent response:', response.data);
+      return response.data.data; // contains { hash: string }
+    } catch (error: any) {
+      console.error('OnRamp Create Intent Error:', error.response?.data || error.message);
+      throw new Error(`Failed to create intent: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
    * Create a new OnRamp Money order via Direct API (Whitelabel Flow)
    */
   async createOrder(params: CreateOnRampOrderParams): Promise<OnRampOrder> {
@@ -252,7 +315,7 @@ export class OnRampMoneyService {
     const merchantRecognitionId = `${walletAddress}-${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     const idempotencyKey = crypto.randomUUID();
 
-    const appId = env.ONRAMP_APP_LIVE_ID || env.ONRAMP_APP_ID;
+    const appId = env.ONRAMP_APP_LIVE_ID;
     const apiKey = env.ONRAMP_API_LIVE_KEY;
     const secret = env.ONRAMP_APP_LIVE_SECRET_KEY;
 
@@ -260,15 +323,12 @@ export class OnRampMoneyService {
       throw new Error('OnRamp App ID, API Key, or Secret Key not configured');
     }
 
-    // 2. Call Create Order API
+    // 2. Call Create Order API (Whitelabel Flow)
+    // Strictly follow docs: only coinId, chainId, coinAmount
     const body = {
-      coinId,
-      chainId,
-      coinAmount: quote.cryptoAmount.toString(), // Ensure string as per docs
-      address: walletAddress, 
-      fiatAmount,
-      fiatType: FIAT_TYPES[fiatCurrency.toUpperCase()], 
-      appId: appId
+      coinId: coinId.toString(),
+      chainId: chainId.toString(),
+      coinAmount: quote.cryptoAmount.toString(),
     };
 
     // Construct payload wrapper for signature
@@ -282,6 +342,11 @@ export class OnRampMoneyService {
     const signature = crypto.createHmac('sha512', secret).update(payloadBase64).digest('hex');
 
     console.log('Creating OnRamp Order with body:', body);
+    console.log(`[OnRampService] createOrder headers - APIKey: ${apiKey.substring(0,4)}... (${apiKey.length} chars)`);
+
+    let providerOrderId: string | undefined;
+    let depositAddress: string | undefined;
+    let endTime: number | undefined;
 
     try {
         const response = await axios.post(
@@ -289,6 +354,7 @@ export class OnRampMoneyService {
             body,
             {
                 headers: {
+                    'Accept': 'application/json',
                     'Content-Type': 'application/json;charset=UTF-8',
                     'X-ONRAMP-APIKEY': apiKey,
                     'X-ONRAMP-PAYLOAD': payloadBase64,
@@ -297,71 +363,83 @@ export class OnRampMoneyService {
             }
         );
 
-        const { orderId, address: depositAddress, endTime } = response.data.data;
-
-        // Generate OnRamp URL as backup/KYC entry point
-        const urlParams = new URLSearchParams({
-            appId,
-            fiatType: FIAT_TYPES[fiatCurrency.toUpperCase()].toString(),
-            fiatAmount: fiatAmount.toString(),
-            coinCode: cryptoCurrency.toLowerCase(),
-            network: network.toLowerCase(),
-            walletAddress,
-            paymentMethod: params.paymentMethod.toString(),
-            merchantRecognitionId,
-            redirectURL: `${env.API_URL}/api/swap/onramp/callback`,
-            language: 'en',
-        });
-        const onrampUrl = `${ONRAMP_WIDGET_BASE_URL}/main/buy/?${urlParams}`;
-
-        // Save into DB
-        const [order] = await db
-        .insert(onrampOrders)
-        .values({
-            userId,
-            idempotencyKey,
-            fiatAmount: fiatAmount.toString(),
-            fiatCurrency: fiatCurrency.toUpperCase(),
-            cryptoAmount: quote.cryptoAmount.toString(),
-            cryptoCurrency: cryptoCurrency.toUpperCase(),
-            network,
-            walletAddress,
-            paymentMethod: params.paymentMethod,
-            merchantRecognitionId, 
-            providerOrderId: orderId.toString(),
-            onrampUrl, // Stored for KYC link
-            status: 'pending',
-            metadata: JSON.stringify({
-                appId,
-                depositAddress,
-                endTime,
-                initialQuote: quote
-            }),
-        })
-        .returning();
-
-        return {
-            id: order.id,
-            userId: order.userId,
-            fiatAmount: Number(order.fiatAmount),
-            fiatCurrency: order.fiatCurrency,
-            cryptoAmount: Number(quote.cryptoAmount),
-            cryptoCurrency: order.cryptoCurrency,
-            network: order.network,
-            walletAddress: order.walletAddress,
-            paymentMethod: order.paymentMethod,
-            merchantRecognitionId,
-            depositAddress,
-            endTime: new Date(endTime * 1000), // Unix to JS Date
-            status: order.status,
-            createdAt: order.createdAt,
-            updatedAt: order.updatedAt,
-        };
+        const data = response.data.data;
+        providerOrderId = data.orderId;
+        depositAddress = data.address;
+        endTime = data.endTime;
 
     } catch (error: any) {
-        console.error('OnRamp Create Order Error:', error.response?.data || error.message);
-        throw new Error(`Failed to create order: ${error.response?.data?.message || error.message}`);
+        // If 401/403, it likely means Whitelabel API is not enabled for this key.
+        // Fallback to Hosted Mode (URL generation only).
+        if (error.response?.status === 401 || error.response?.status === 403) {
+            console.warn('[OnRampService] Whitelabel API access denied (401/403). Falling back to Hosted Mode.');
+            // Proceed without providerOrderId/depositAddress
+        } else {
+            console.error('OnRamp Create Order Error:', error.response?.data || error.message);
+            throw new Error(`Failed to create order: ${error.response?.data?.message || error.message}`);
+        }
     }
+
+    // Generate OnRamp URL (Hosted Mode / KYC entry point)
+    const urlParams = new URLSearchParams({
+        appId,
+        fiatType: FIAT_TYPES[fiatCurrency.toUpperCase()].toString(),
+        fiatAmount: fiatAmount.toString(),
+        coinCode: cryptoCurrency.toLowerCase(),
+        network: network.toLowerCase(),
+        walletAddress,
+        paymentMethod: params.paymentMethod.toString(),
+        merchantRecognitionId,
+        redirectURL: `${env.API_URL}/api/swap/onramp/callback`,
+        language: 'en',
+    });
+    const onrampUrl = `${ONRAMP_WIDGET_BASE_URL}/main/buy/?${urlParams}`;
+
+    // Save into DB
+    const [order] = await db
+    .insert(onrampOrders)
+    .values({
+        userId,
+        idempotencyKey,
+        fiatAmount: fiatAmount.toString(),
+        fiatCurrency: fiatCurrency.toUpperCase(),
+        cryptoAmount: quote.cryptoAmount.toString(),
+        cryptoCurrency: cryptoCurrency.toUpperCase(),
+        network,
+        walletAddress,
+        paymentMethod: params.paymentMethod,
+        merchantRecognitionId,
+        providerOrderId: providerOrderId?.toString(),
+        onrampUrl,
+        status: 'pending',
+        metadata: JSON.stringify({
+            appId,
+            depositAddress,
+            endTime,
+            initialQuote: quote,
+            mode: depositAddress ? 'whitelabel' : 'hosted'
+        }),
+    })
+    .returning();
+
+    return {
+        id: order.id,
+        userId: order.userId,
+        fiatAmount: Number(order.fiatAmount),
+        fiatCurrency: order.fiatCurrency,
+        cryptoAmount: Number(quote.cryptoAmount),
+        cryptoCurrency: order.cryptoCurrency,
+        network: order.network,
+        walletAddress: order.walletAddress,
+        paymentMethod: order.paymentMethod,
+        merchantRecognitionId,
+        depositAddress,
+        endTime: endTime ? new Date(endTime * 1000) : undefined,
+        status: order.status,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        onrampUrl: order.onrampUrl || undefined
+    };
   }
 
   /**
