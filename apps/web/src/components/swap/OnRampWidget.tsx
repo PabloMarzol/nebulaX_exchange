@@ -168,10 +168,12 @@ function OrderStatusTracker({ orderId, onKycRequired }: { orderId: string, onKyc
       color = "text-orange-500";
   }
 
+  const StatusIcon = icon;
+
   return (
     <div className="p-4 border rounded-lg flex items-center gap-3">
         <div className={`p-2 rounded-full bg-muted ${color}`}>
-            <icon.type className="w-5 h-5" />
+            <StatusIcon className="w-5 h-5" />
         </div>
         <div className="flex-1">
             <div className="font-medium">{label}</div>
@@ -315,15 +317,28 @@ export function OnRampWidget() {
               )}
 
               {/* Payment Instructions (Only if not completed and address available) */}
-              {activeOrderData.depositAddress && (
-                  <PaymentInstructions 
+              {activeOrderData.depositAddress ? (
+                  <PaymentInstructions
                     depositAddress={activeOrderData.depositAddress}
                     endTime={new Date(activeOrderData.endTime)}
                     fiatAmount={activeOrderData.fiatAmount}
                     fiatCurrency={activeOrderData.fiatCurrency}
                     paymentMethod={activeOrderData.paymentMethod}
                   />
-              )}
+              ) : activeOrderData.onrampUrl ? (
+                  <div className="text-center space-y-4 p-6 bg-muted/30 rounded-lg">
+                      <p className="text-muted-foreground">
+                          Please complete your payment on the secure OnRamp Money page.
+                      </p>
+                      <Button
+                          size="lg"
+                          className="w-full"
+                          onClick={() => window.location.href = activeOrderData.onrampUrl}
+                      >
+                          Continue to Payment <ExternalLink className="w-4 h-4 ml-2" />
+                      </Button>
+                  </div>
+              ) : null}
           </Card>
       );
   }
