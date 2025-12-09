@@ -118,7 +118,20 @@ export function CryptoSwap() {
         setQuoteExpiry(Date.now() + 30000); // 30 seconds from now
       } catch (error) {
         console.error('Quote error:', error);
-        setQuoteError(error instanceof Error ? error.message : 'Failed to fetch quote');
+
+        // Parse error message for better user feedback
+        let errorMessage = 'Failed to fetch quote';
+        if (error instanceof Error) {
+          if (error.message.includes('no Route matched') || error.message.includes('no liquidity')) {
+            errorMessage = `No trading route available for ${sellToken.symbol}/${buyToken.symbol}. This token pair may have insufficient liquidity. Try a different token or pair.`;
+          } else if (error.message.includes('INSUFFICIENT_ASSET_LIQUIDITY')) {
+            errorMessage = `Insufficient liquidity for ${sellToken.symbol}. Try a smaller amount or different token.`;
+          } else {
+            errorMessage = error.message;
+          }
+        }
+
+        setQuoteError(errorMessage);
         setQuote(null);
       } finally {
         setIsFetchingQuote(false);

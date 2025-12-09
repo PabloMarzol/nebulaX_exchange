@@ -489,12 +489,30 @@ export class ZeroXSwapService {
       // Create a Set for quick gasless lookup
       const gaslessSet = new Set(gaslessTokens.map(addr => addr.toLowerCase()));
 
+      // Create a Set of known good tokens (from static metadata)
+      const knownGoodTokensSet = new Set(Object.keys(TOKEN_METADATA));
+
       // Get token list from standard sources (cached - 24hr TTL)
       const tokenList = await this.fetchTokenListCached(chainId);
 
-      // Use ALL tokens from token list (not just gasless ones)
-      // This gives users access to hundreds of popular tokens
-      let allTokens = tokenList.map((token) => {
+      // FILTER: Only include high-quality tokens to avoid "no Route" errors
+      // Include tokens that are either:
+      // 1. In the top 100 of the token list (usually sorted by popularity/liquidity)
+      // 2. Gasless tokens (verified by 0x to have good liquidity)
+      // 3. In our static metadata (known popular tokens)
+      const topTokens = tokenList.slice(0, 100); // Top 100 from token list
+      const filteredTokenList = tokenList.filter((token, index) => {
+        const normalizedAddress = token.address.toLowerCase();
+        return (
+          index < 100 || // Top 100 tokens
+          gaslessSet.has(normalizedAddress) || // Gasless tokens
+          knownGoodTokensSet.has(normalizedAddress) // Known good tokens
+        );
+      });
+
+      // Use filtered tokens (not ALL tokens anymore)
+      // This ensures we only show tokens with good liquidity
+      let allTokens = filteredTokenList.map((token) => {
         const normalizedAddress = token.address.toLowerCase();
         const isGasless = gaslessSet.has(normalizedAddress);
 
