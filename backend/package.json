@@ -16,6 +16,10 @@
     "test:orderPlacement": "tsx src/scripts/testOrderPlacement.ts",
     "test:positionManagement": "tsx src/scripts/testPositionManagement.ts",
     "test:errorHandling": "tsx src/scripts/testErrorHandling.ts",
+    "test:onramp-flow": "tsx src/scripts/testOnRampFlow.ts",
+    "test:onrampOrder": "tsx src/scripts/testOnRampCreateOrderRepro.ts",
+    "test:unitTest": "npm run test src/__tests__/onrampMoneyService.test.ts",
+    "test:docExample": "tsx src/scripts/testDocExample.ts",
     "lint": "eslint . --ext ts --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit"
   },
@@ -25,6 +29,7 @@
     "bcrypt": "^5.1.1",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
     "date-fns": "^3.6.0",
     "dotenv": "^17.2.1",
     "drizzle-orm": "^0.39.3",
@@ -44,6 +49,7 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",
+    "@types/crypto-js": "^4.2.2",
     "@types/express": "^5.0.0",
     "@types/express-session": "^1.18.0",
     "@types/jsonwebtoken": "^9.0.7",

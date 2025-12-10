@@ -1,0 +1,18 @@
+- [ ] Confirm ENV variables (API Keys, etc) are available or warn user.
+- [ ] **Backend Refactor (`backend/src/services/onrampMoneyService.ts`)**
+    - [ ] Add helper for calculating crypto amount (if needed, or let API do it) - Note: API `createOrder` requires `coinAmount`. The Plan says "must include ... coinAmount". But documentation says "Use the response [from quotes] to show...". So I need to use the quote flow or the calculation logic to send `coinAmount`.
+    - [ ] Refactor `createOrder` to call `POST /onramp-merchants/widget/createOrder`.
+    - [ ] Return `orderId`, `depositAddress`, `endTime`, `kycNeeded` (if available immediately).
+    - [ ] Add `pollOrderStatus(orderId)` method calling `POST /onramp-merchants/widget/getOrder`.
+    - [ ] Add `extendTime(orderId)` and `cancelOrder(orderId)`.
+- [ ] **Backend Routes (`backend/src/routes/onramp.routes.ts`)**
+    - [ ] Update `/submit` response to include `depositAddress`, `endTime`.
+    - [ ] Update `/status/:orderId` to invoke `pollOrderStatus` and return standardized status + kyc status.
+    - [ ] Add endpoint for KYC initiation if needed (or just use the polling response to trigger it on frontend).
+- [ ] **Frontend Logic (`apps/web/src/components/swap/OnRampWidget.tsx`)**
+    - [ ] Create `PaymentInstructions` component (in same file or separate).
+    - [ ] Create `OrderStatusTracker` component.
+    - [ ] Update `handleCreateOrder` to switch UI state to "Payment Instructions" instead of opening popup.
+    - [ ] Implement polling hook/logic in component to check `/api/onramp/status/:id`.
+    - [ ] Handle `kycNeeded: 1`: Show "Complete KYC" button -> Redirect/Popup.
+    - [ ] Handle Success: Show success message.
