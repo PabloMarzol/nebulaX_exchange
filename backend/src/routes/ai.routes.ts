@@ -7,10 +7,7 @@ const router = Router();
 // Python AI service URL (configure via environment variable)
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
-// All AI routes require authentication
-router.use(authenticate);
-
-// Analyze portfolio with all AI agents
+// Analyze portfolio with all AI agents (no auth for testing with mock data)
 router.post('/analyze-portfolio', async (req, res) => {
   try {
     const { tickers, portfolio, startDate, endDate, modelName, modelProvider } = req.body;

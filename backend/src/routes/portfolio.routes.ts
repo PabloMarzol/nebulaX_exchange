@@ -7,10 +7,7 @@ const router = Router();
 // Python AI service URL
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
-// All portfolio routes require authentication
-router.use(authenticate);
-
-// Calculate portfolio metrics
+// Calculate portfolio metrics (no auth required - uses data from request)
 router.post('/metrics', async (req, res) => {
   try {
     const { portfolio, tickers } = req.body;
@@ -45,8 +42,8 @@ router.post('/metrics', async (req, res) => {
   }
 });
 
-// Get portfolio balance (placeholder - to be implemented with actual user data)
-router.get('/balance', (req, res) => {
+// Get portfolio balance (requires auth - uses real user data)
+router.get('/balance', authenticate, (req, res) => {
   // TODO: Implement with actual user portfolio data from database
   res.json({
     message: 'Portfolio balance endpoint',
@@ -54,8 +51,8 @@ router.get('/balance', (req, res) => {
   });
 });
 
-// Get portfolio history (placeholder - to be implemented with actual user data)
-router.get('/history', (req, res) => {
+// Get portfolio history (requires auth - uses real user data)
+router.get('/history', authenticate, (req, res) => {
   // TODO: Implement with actual portfolio history tracking
   res.json({
     message: 'Portfolio history endpoint',
