@@ -20,7 +20,7 @@ const router = Router();
  * GET /api/swap/quote
  * Get a swap quote from 0x Protocol
  */
-router.post('/quote', authenticate, async (req, res, next) => {
+router.post('/quote', async (req, res, next) => {
   try {
     const schema = z.object({
       sellToken: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -34,7 +34,12 @@ router.post('/quote', authenticate, async (req, res, next) => {
 
     const data = schema.parse(req.body);
 
-    const quote = await zeroXSwapService.getSwapQuote(data);
+    const quote = await zeroXSwapService.getSwapQuote({
+      ...data,
+      sellToken: data.sellToken as `0x${string}`,
+      buyToken: data.buyToken as `0x${string}`,
+      takerAddress: data.takerAddress as `0x${string}`,
+    });
 
     res.json({
       success: true,
@@ -61,7 +66,11 @@ router.post('/price', async (req, res, next) => {
 
     const data = schema.parse(req.body);
 
-    const price = await zeroXSwapService.getPriceQuote(data);
+    const price = await zeroXSwapService.getPriceQuote({
+      ...data,
+      sellToken: data.sellToken as `0x${string}`,
+      buyToken: data.buyToken as `0x${string}`,
+    });
 
     res.json({
       success: true,
@@ -280,7 +289,7 @@ router.post('/gasless/price', async (req, res, next) => {
  * POST /api/swap/gasless/quote
  * Get a firm quote for a gasless swap
  */
-router.post('/gasless/quote', authenticate, async (req, res, next) => {
+router.post('/gasless/quote', async (req, res, next) => {
   try {
     const schema = z.object({
       chainId: z.number().int().positive(),
@@ -311,7 +320,7 @@ router.post('/gasless/quote', authenticate, async (req, res, next) => {
  * POST /api/swap/gasless/submit
  * Submit a gasless swap with signatures
  */
-router.post('/gasless/submit', authenticate, async (req, res, next) => {
+router.post('/gasless/submit', async (req, res, next) => {
   try {
     const signatureSchema = z.object({
       v: z.number(),
@@ -355,7 +364,7 @@ router.post('/gasless/submit', authenticate, async (req, res, next) => {
  * GET /api/swap/gasless/status/:tradeHash
  * Get the status of a gasless swap
  */
-router.get('/gasless/status/:tradeHash', authenticate, async (req, res, next) => {
+router.get('/gasless/status/:tradeHash', async (req, res, next) => {
   try {
     const { tradeHash } = req.params;
     const chainId = parseInt(req.query.chainId as string);

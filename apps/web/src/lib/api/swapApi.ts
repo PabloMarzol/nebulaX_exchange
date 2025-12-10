@@ -15,26 +15,67 @@ export interface SwapQuoteRequest {
 }
 
 export interface SwapQuote {
-  price: string;
-  guaranteedPrice: string;
-  estimatedPriceImpact: string;
-  to: Address;
-  data: `0x${string}`;
-  value: string;
-  gas: string;
-  estimatedGas: string;
-  gasPrice: string;
-  protocolFee: string;
-  minimumProtocolFee: string;
+  price?: string; // v2 doesn't return price directly
+  guaranteedPrice?: string;
+  estimatedPriceImpact?: string;
+  to?: Address;
+  data?: `0x${string}`;
+  value?: string;
+  gas?: string;
+  estimatedGas?: string;
+  gasPrice?: string;
+  protocolFee?: string;
+  minimumProtocolFee?: string;
   buyAmount: string;
   sellAmount: string;
-  sources: Array<{ name: string; proportion: string }>;
-  buyTokenAddress: Address;
-  sellTokenAddress: Address;
-  allowanceTarget: Address;
-  sellTokenToEthRate: string;
-  buyTokenToEthRate: string;
-  expectedSlippage: string | null;
+  sources?: Array<{ name: string; proportion: string }>;
+  buyTokenAddress?: Address;
+  sellTokenAddress?: Address;
+  allowanceTarget?: Address;
+  sellTokenToEthRate?: string;
+  buyTokenToEthRate?: string;
+  expectedSlippage?: string | null;
+  // v2 fields
+  buyToken?: string;
+  sellToken?: string;
+  fees?: any;
+  issues?: {
+    allowance?: {
+      actual: string;
+      spender: string;
+    };
+    balance?: {
+      token: string;
+      actual: string;
+      expected: string;
+    };
+    simulationIncomplete?: boolean;
+    invalidSourcesPassed?: string[];
+  };
+  liquidityAvailable?: boolean;
+  minBuyAmount?: string;
+  route?: {
+    fills: Array<{
+      from: string;
+      to: string;
+      source: string;
+      proportionBps: string;
+    }>;
+    tokens: Array<{
+      address: string;
+      symbol: string;
+    }>;
+  };
+  tokenMetadata?: any;
+  totalNetworkFee?: string;
+  transaction?: {
+    to: string;
+    data: string;
+    gas: string;
+    gasPrice: string;
+    value: string;
+  };
+  zid?: string;
 }
 
 export interface PriceQuote {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowDownUp, Info, Settings, ChevronDown, Loader2, AlertCircle, Wallet } from 'lucide-react';
-import { useAccount, useChainId, useSignTypedData, useBalance } from 'wagmi';
-import { parseUnits, formatUnits, type Address } from 'viem';
+import { useAccount, useChainId, useSignTypedData, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, usePublicClient } from 'wagmi';
+import { parseUnits, formatUnits, type Address, erc20Abi } from 'viem';
 import { mainnet, polygon, arbitrum, bsc, base, optimism } from 'viem/chains';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -23,8 +23,11 @@ const CHAIN_NAMES: Record<number, string> = {
 export function CryptoSwap() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const publicClient = usePublicClient();
   const { signTypedDataAsync } = useSignTypedData();
-  const { isAuthenticated } = useAuth();
+  const { sendTransactionAsync } = useSendTransaction();
+  const { writeContractAsync } = useWriteContract();
+  const { isAuthenticated, login } = useAuth();
   const token = isAuthenticated ? localStorage.getItem('auth_token') : null;
 
   const { data: tokens = [], isLoading: tokensLoading } = useTokens(chainId);
@@ -48,8 +51,23 @@ export function CryptoSwap() {
 
   // Transaction state
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [txStatus, setTxStatus] = useState<'idle' | 'signing' | 'submitting' | 'polling' | 'success' | 'error'>('idle');
+  const [txStatus, setTxStatus] = useState<'idle' | 'signing' | 'approving' | 'submitting' | 'polling' | 'success' | 'error'>('idle');
   const [tradeHash, setTradeHash] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
+
+  // Wait for transaction receipt
+  const { isLoading: isWaitingTx, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({
+    hash: txHash || undefined,
+  });
+
+  // Effect to handle transaction success
+  useEffect(() => {
+    if (isTxSuccess) {
+      setTxStatus('success');
+      setSellAmount('');
+      setQuote(null);
+    }
+  }, [isTxSuccess]);
 
   // Native token address used by 0x Protocol
   const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
@@ -65,7 +83,9 @@ export function CryptoSwap() {
     address,
     token: sellToken && !isNativeToken(sellToken.address) ? sellToken.address : undefined,
     chainId,
-    enabled: !!sellToken && !!address,
+    query: {
+      enabled: !!sellToken && !!address,
+    },
   });
 
   // Initialize with default tokens
@@ -177,121 +197,212 @@ export function CryptoSwap() {
     return sellToken?.supportsGasless !== false && buyToken?.supportsGasless !== false;
   }, [sellToken, buyToken]);
 
-  // Handle swap execution with gasless flow
+  // Handle swap execution
   const handleExecuteSwap = async () => {
-    if (!quote || !sellToken || !buyToken || !address || !token) return;
-
-    // Check if gasless is supported
-    if (!isGaslessSupported) {
-      setQuoteError('Native token swaps are not yet supported in gasless mode. Please use an ERC-20 token.');
+    console.log('handleExecuteSwap initiated');
+    if (!quote || !sellToken || !buyToken || !address) {
+      console.error('Missing required fields:', { quote: !!quote, sellToken: !!sellToken, buyToken: !!buyToken, address: !!address });
       return;
     }
+    
+    // Token is optional now as swap endpoints are public
+    // if (!token) { ... }
 
     try {
+      console.log('Starting swap execution...');
       setIsSubmitting(true);
-      setTxStatus('signing');
-
-      // Get firm quote with EIP-712 data
       const parsedAmount = parseUnits(sellAmount, sellToken.decimals);
-      const firmQuote = await swapApi.getGaslessQuote(
-        {
-          chainId,
-          sellToken: sellToken.address,
-          buyToken: buyToken.address,
-          sellAmount: parsedAmount.toString(),
-          taker: address,
-          slippageBps,
-        },
-        token
-      );
 
-      // Sign approval if needed
-      let approvalSignature = null;
-      if (firmQuote.approval) {
-        const approvalSig = await signTypedDataAsync({
-          domain: firmQuote.approval.eip712.domain,
-          types: firmQuote.approval.eip712.types,
-          primaryType: firmQuote.approval.eip712.primaryType,
-          message: firmQuote.approval.eip712.message,
+      // Gasless Flow
+      if (isGaslessSupported) {
+        setTxStatus('signing');
+
+        // Get firm quote with EIP-712 data
+        const firmQuote = await swapApi.getGaslessQuote(
+          {
+            chainId,
+            sellToken: sellToken.address,
+            buyToken: buyToken.address,
+            sellAmount: parsedAmount.toString(),
+            taker: address,
+            slippageBps,
+          },
+          token || ''
+        );
+
+        // Sign approval if needed
+        let approvalSignature = null;
+        if (firmQuote.approval) {
+          const approvalSig = await signTypedDataAsync({
+            domain: firmQuote.approval.eip712.domain,
+            types: firmQuote.approval.eip712.types,
+            primaryType: firmQuote.approval.eip712.primaryType,
+            message: firmQuote.approval.eip712.message,
+          });
+
+          // Split signature
+          const r = approvalSig.slice(0, 66);
+          const s = '0x' + approvalSig.slice(66, 130);
+          const v = parseInt(approvalSig.slice(130, 132), 16);
+
+          approvalSignature = {
+            type: firmQuote.approval.type,
+            hash: firmQuote.approval.hash,
+            eip712: firmQuote.approval.eip712,
+            signature: { v, r, s, signatureType: 2 },
+          };
+        }
+
+        // Sign trade
+        const tradeSig = await signTypedDataAsync({
+          domain: firmQuote.trade.eip712.domain,
+          types: firmQuote.trade.eip712.types,
+          primaryType: firmQuote.trade.eip712.primaryType,
+          message: firmQuote.trade.eip712.message,
         });
 
-        // Split signature
-        const r = approvalSig.slice(0, 66);
-        const s = '0x' + approvalSig.slice(66, 130);
-        const v = parseInt(approvalSig.slice(130, 132), 16);
+        // Split trade signature
+        const tradeR = tradeSig.slice(0, 66);
+        const tradeS = '0x' + tradeSig.slice(66, 130);
+        const tradeV = parseInt(tradeSig.slice(130, 132), 16);
 
-        approvalSignature = {
-          type: firmQuote.approval.type,
-          hash: firmQuote.approval.hash,
-          eip712: firmQuote.approval.eip712,
-          signature: { v, r, s, signatureType: 2 },
+        const tradeSignature = {
+          type: firmQuote.trade.type,
+          hash: firmQuote.trade.hash,
+          eip712: firmQuote.trade.eip712,
+          signature: { v: tradeV, r: tradeR, s: tradeS, signatureType: 2 },
         };
-      }
 
-      // Sign trade
-      const tradeSig = await signTypedDataAsync({
-        domain: firmQuote.trade.eip712.domain,
-        types: firmQuote.trade.eip712.types,
-        primaryType: firmQuote.trade.eip712.primaryType,
-        message: firmQuote.trade.eip712.message,
-      });
+        // Submit to 0x
+        setTxStatus('submitting');
+        const result = await swapApi.submitGaslessSwap(
+          {
+            chainId,
+            ...(approvalSignature && { approval: approvalSignature }),
+            trade: tradeSignature,
+          },
+          token || ''
+        );
+  
+        setTradeHash(result.tradeHash);
+        setTxStatus('polling');
+  
+        // Poll for status
+        const pollInterval = setInterval(async () => {
+          try {
+            const status = await swapApi.getGaslessStatus(
+              { chainId, tradeHash: result.tradeHash },
+              token || ''
+            );
 
-      // Split trade signature
-      const tradeR = tradeSig.slice(0, 66);
-      const tradeS = '0x' + tradeSig.slice(66, 130);
-      const tradeV = parseInt(tradeSig.slice(130, 132), 16);
-
-      const tradeSignature = {
-        type: firmQuote.trade.type,
-        hash: firmQuote.trade.hash,
-        eip712: firmQuote.trade.eip712,
-        signature: { v: tradeV, r: tradeR, s: tradeS, signatureType: 2 },
-      };
-
-      // Submit to 0x
-      setTxStatus('submitting');
-      const result = await swapApi.submitGaslessSwap(
-        {
-          chainId,
-          ...(approvalSignature && { approval: approvalSignature }),
-          trade: tradeSignature,
-        },
-        token
-      );
-
-      setTradeHash(result.tradeHash);
-      setTxStatus('polling');
-
-      // Poll for status
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await swapApi.getGaslessStatus(
-            { chainId, tradeHash: result.tradeHash },
-            token
-          );
-
-          if (status.status === 'confirmed') {
-            setTxStatus('success');
-            clearInterval(pollInterval);
-            // Reset form
-            setSellAmount('');
-            setQuote(null);
-          } else if (status.status === 'succeeded') {
-            // Wait for confirmation
-            console.log('Transaction succeeded, waiting for confirmation...');
+            if (status.status === 'confirmed') {
+              setTxStatus('success');
+              clearInterval(pollInterval);
+              // Reset form
+              setSellAmount('');
+              setQuote(null);
+            } else if (status.status === 'succeeded') {
+              // Wait for confirmation
+              console.log('Transaction succeeded, waiting for confirmation...');
+            }
+          } catch (error) {
+            console.error('Status polling error:', error);
           }
-        } catch (error) {
-          console.error('Status polling error:', error);
-        }
-      }, 3000);
+        }, 3000);
 
-      // Stop polling after 5 minutes
-      setTimeout(() => clearInterval(pollInterval), 300000);
+        // Stop polling after 5 minutes
+        setTimeout(() => clearInterval(pollInterval), 300000);
+      }
+      // Standard Swap Flow (Non-Gasless)
+      else {
+        setTxStatus('submitting');
+        
+        // Get firm quote for standard swap
+        const firmQuote = await swapApi.getQuote(
+          {
+            chainId,
+            sellToken: sellToken.address,
+            buyToken: buyToken.address,
+            sellAmount: parsedAmount.toString(),
+            takerAddress: address,
+            slippagePercentage: slippageBps / 10000,
+          },
+          token || ''
+        );
+
+        // Check allowance
+        if (firmQuote.issues?.allowance) {
+          setTxStatus('approving');
+          const { spender } = firmQuote.issues.allowance;
+          
+          // Approve token
+          const hash = await writeContractAsync({
+            address: sellToken.address,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [spender as Address, parsedAmount],
+          });
+          
+          // Wait for approval to be mined
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash });
+          }
+        }
+
+        setTxStatus('submitting');
+        
+        if (!firmQuote.transaction) {
+          throw new Error('No transaction data in quote');
+        }
+
+        // Send swap transaction
+        console.log('Sending swap transaction...', firmQuote.transaction);
+        const hash = await sendTransactionAsync({
+          to: firmQuote.transaction.to as Address,
+          data: firmQuote.transaction.data as `0x${string}`,
+          value: BigInt(firmQuote.transaction.value),
+          ...(firmQuote.transaction.gas ? { gas: BigInt(firmQuote.transaction.gas) } : {}),
+          ...(firmQuote.transaction.gasPrice ? { gasPrice: BigInt(firmQuote.transaction.gasPrice) } : {}),
+          chainId,
+          account: address,
+        });
+
+        console.log('Swap transaction sent:', hash);
+        setTxHash(hash);
+        setTxStatus('polling'); // Reusing polling status for waiting for receipt
+      }
     } catch (error) {
       console.error('Swap error:', error);
-      setTxStatus('error');
+      
+      // Check for user rejection
+      const isUserRejection = (err: any) => {
+        if (!err) return false;
+        // Check for standard EIP-1193 rejection code
+        if (err.code === 4001) return true;
+        // Check for common error messages
+        const message = err.message || err.toString();
+        return (
+          message.includes('User rejected') ||
+          message.includes('User denied') ||
+          message.includes('Action cancelled')
+        );
+      };
+
+      if (isUserRejection(error)) {
+        setTxStatus('idle');
+        setQuoteError('Swap cancelled by user');
+        // Clear the error after 3 seconds
+        setTimeout(() => {
+          setQuoteError(null);
+        }, 3000);
+      } else {
+        setTxStatus('error');
+        setQuoteError(error instanceof Error ? error.message : 'Swap failed');
+      }
     } finally {
-      setIsSubmitting(false);
+      if (txStatus !== 'polling') {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -490,26 +601,17 @@ export function CryptoSwap() {
         </div>
       )}
 
-      {/* Gasless Not Supported Warning */}
-      {quote && !isGaslessSupported && (
-        <div className="p-4 rounded-2xl bg-yellow-500/10 border border-yellow-500/20">
-          <p className="text-sm text-yellow-400">
-            ⚠️ Native token swaps (ETH, MATIC, BNB) are not supported in gasless mode yet.
-            You can view your balance and get price quotes, but cannot execute the swap at this time.
-          </p>
-        </div>
-      )}
-
       {/* Action Button */}
       <Button
         onClick={handleExecuteSwap}
-        disabled={!quote || isFetchingQuote || isSubmitting || !sellAmount || parseFloat(sellAmount) <= 0 || !isGaslessSupported}
+        disabled={!quote || isFetchingQuote || isSubmitting || !sellAmount || parseFloat(sellAmount) <= 0}
         className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-500 hover:opacity-90 transition-opacity"
       >
-        {isSubmitting ? (
+        {isSubmitting || (txStatus === 'polling' && !isTxSuccess) ? (
           <div className="flex items-center gap-2">
             <Loader2 className="w-5 h-5 animate-spin" />
             {txStatus === 'signing' && 'Sign in Wallet...'}
+            {txStatus === 'approving' && 'Approving Token...'}
             {txStatus === 'submitting' && 'Submitting Swap...'}
             {txStatus === 'polling' && 'Confirming Transaction...'}
           </div>
@@ -517,8 +619,6 @@ export function CryptoSwap() {
           'Fetching Quote...'
         ) : txStatus === 'success' ? (
           '✓ Swap Successful!'
-        ) : !isGaslessSupported ? (
-          'Native Token Swaps Not Supported'
         ) : (
           'Swap'
         )}

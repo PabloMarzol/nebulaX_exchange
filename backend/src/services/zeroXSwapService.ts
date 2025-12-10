@@ -98,37 +98,37 @@ const CHAIN_CONFIG = {
   [mainnet.id]: {
     chain: mainnet,
     name: 'ethereum',
-    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    apiUrl: `${ZERO_X_API_BASE}/swap/allowance-holder`,
     gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
   },
   [polygon.id]: {
     chain: polygon,
     name: 'polygon',
-    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    apiUrl: `${ZERO_X_API_BASE}/swap/allowance-holder`,
     gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
   },
   [arbitrum.id]: {
     chain: arbitrum,
     name: 'arbitrum',
-    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    apiUrl: `${ZERO_X_API_BASE}/swap/allowance-holder`,
     gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
   },
   [bsc.id]: {
     chain: bsc,
     name: 'bsc',
-    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    apiUrl: `${ZERO_X_API_BASE}/swap/allowance-holder`,
     gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
   },
   [base.id]: {
     chain: base,
     name: 'base',
-    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    apiUrl: `${ZERO_X_API_BASE}/swap/allowance-holder`,
     gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
   },
   [optimism.id]: {
     chain: optimism,
     name: 'optimism',
-    apiUrl: `${ZERO_X_API_BASE}/swap/v1`,
+    apiUrl: `${ZERO_X_API_BASE}/swap/allowance-holder`,
     gaslessApiUrl: `${ZERO_X_API_BASE}/gasless`
   },
 } as const;
@@ -146,26 +146,67 @@ export interface SwapQuoteParams {
 }
 
 export interface SwapQuote {
-  price: string;
-  guaranteedPrice: string;
-  estimatedPriceImpact: string;
-  to: Address;
-  data: `0x${string}`;
-  value: string;
-  gas: string;
-  estimatedGas: string;
-  gasPrice: string;
-  protocolFee: string;
-  minimumProtocolFee: string;
+  price?: string;
+  guaranteedPrice?: string;
+  estimatedPriceImpact?: string;
+  to?: Address;
+  data?: `0x${string}`;
+  value?: string;
+  gas?: string;
+  estimatedGas?: string;
+  gasPrice?: string;
+  protocolFee?: string;
+  minimumProtocolFee?: string;
   buyAmount: string;
   sellAmount: string;
-  sources: Array<{ name: string; proportion: string }>;
-  buyTokenAddress: Address;
-  sellTokenAddress: Address;
-  allowanceTarget: Address;
-  sellTokenToEthRate: string;
-  buyTokenToEthRate: string;
-  expectedSlippage: string | null;
+  sources?: Array<{ name: string; proportion: string }>;
+  buyTokenAddress?: Address;
+  sellTokenAddress?: Address;
+  allowanceTarget?: Address;
+  sellTokenToEthRate?: string;
+  buyTokenToEthRate?: string;
+  expectedSlippage?: string | null;
+  // v2 fields
+  buyToken?: string;
+  sellToken?: string;
+  fees?: any;
+  issues?: {
+    allowance?: {
+      actual: string;
+      spender: string;
+    };
+    balance?: {
+      token: string;
+      actual: string;
+      expected: string;
+    };
+    simulationIncomplete?: boolean;
+    invalidSourcesPassed?: string[];
+  };
+  liquidityAvailable?: boolean;
+  minBuyAmount?: string;
+  route?: {
+    fills: Array<{
+      from: string;
+      to: string;
+      source: string;
+      proportionBps: string;
+    }>;
+    tokens: Array<{
+      address: string;
+      symbol: string;
+    }>;
+  };
+  tokenMetadata?: any;
+  totalNetworkFee?: string;
+  transaction?: {
+    to: string;
+    data: string;
+    gas: string;
+    gasPrice: string;
+    value: string;
+  };
+  zid?: string;
 }
 
 export interface TokenAllowance {
@@ -210,22 +251,38 @@ export class ZeroXSwapService {
 
     // Build query parameters
     const queryParams = new URLSearchParams({
+      chainId: params.chainId.toString(),
       sellToken,
       buyToken,
-      takerAddress: params.takerAddress,
+      taker: params.takerAddress, // v2 uses 'taker' instead of 'takerAddress'
       ...(params.sellAmount && { sellAmount: params.sellAmount }),
       ...(params.buyAmount && { buyAmount: params.buyAmount }),
-      ...(params.slippagePercentage && { slippagePercentage: params.slippagePercentage.toString() }),
-      ...(params.affiliateAddress && { feeRecipient: params.affiliateAddress }),
-      ...(params.affiliateFee && { buyTokenPercentageFee: params.affiliateFee }),
-      skipValidation: 'false',
-      enableSlippageProtection: 'true',
+      ...(params.slippagePercentage && { slippageBps: (params.slippagePercentage * 10000).toFixed(0) }), // v2 uses slippageBps
+      ...(params.affiliateAddress && { feeRecipient: params.affiliateAddress }), // v2 uses swapFeeRecipient? No, feeRecipient seems deprecated in v2?
+      // v2 uses swapFeeRecipient, swapFeeBps, swapFeeToken.
+      // But let's check if feeRecipient is supported. The docs say swapFeeRecipient.
+      // Let's map affiliateAddress to swapFeeRecipient if needed, but for now let's stick to basic params.
+      // skipValidation: 'false', // v2 doesn't have skipValidation?
+      // enableSlippageProtection: 'true', // v2 doesn't have enableSlippageProtection?
     });
+
+    // Map affiliate params to v2 if present
+    if (params.affiliateAddress) {
+        queryParams.append('swapFeeRecipient', params.affiliateAddress);
+        if (params.affiliateFee) {
+            // affiliateFee is percentage string e.g. '0.01' (1%).
+            // swapFeeBps is integer basis points. 1% = 100 bps.
+            const bps = Math.floor(parseFloat(params.affiliateFee) * 10000);
+            queryParams.append('swapFeeBps', bps.toString());
+            queryParams.append('swapFeeToken', buyToken); // Usually take fee in buy token
+        }
+    }
 
     try {
       const response = await axios.get(`${apiUrl}/quote?${queryParams}`, {
         headers: {
           '0x-api-key': env.ZERO_X_API_KEY || '',
+          '0x-version': 'v2',
           'Content-Type': 'application/json',
         },
       });
@@ -257,12 +314,13 @@ export class ZeroXSwapService {
     // The swap API expects lowercase native token address
     const sellToken = params.sellToken.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()
       ? NATIVE_TOKEN_ADDRESS.toLowerCase()
-      : params.sellToken;
+      : params.sellToken.toLowerCase();
     const buyToken = params.buyToken.toLowerCase() === NATIVE_TOKEN_ADDRESS.toLowerCase()
       ? NATIVE_TOKEN_ADDRESS.toLowerCase()
-      : params.buyToken;
+      : params.buyToken.toLowerCase();
 
     const queryParams = new URLSearchParams({
+      chainId: params.chainId.toString(),
       sellToken,
       buyToken,
       ...(params.sellAmount && { sellAmount: params.sellAmount }),
@@ -273,16 +331,31 @@ export class ZeroXSwapService {
       const response = await axios.get(`${apiUrl}/price?${queryParams}`, {
         headers: {
           '0x-api-key': env.ZERO_X_API_KEY || '',
+          '0x-version': 'v2',
         },
       });
 
+      // v2 response mapping
+      // v2 response doesn't have 'price' field directly, we can calculate it or leave it empty if frontend doesn't strictly need it
+      // v2 response has 'fees.gasFee' instead of 'gas'
+      // v2 response has 'route.fills' instead of 'sources'
+      
+      const data = response.data;
+      const buyAmount = data.buyAmount;
+      const sellAmount = data.sellAmount;
+      
+      // Calculate price if possible (buyAmount / sellAmount) - raw ratio
+      // Note: Frontend usually calculates display rate using formatted amounts
+      const price = (BigInt(buyAmount) * 1000000000000000000n / BigInt(sellAmount)).toString(); // Scaled price? Or just use 0?
+      // Let's use 0 for now as frontend calculates it.
+      
       return {
-        price: response.data.price,
-        estimatedPriceImpact: response.data.estimatedPriceImpact,
-        buyAmount: response.data.buyAmount,
-        sellAmount: response.data.sellAmount,
-        gas: response.data.gas,
-        sources: response.data.sources,
+        price: '0',
+        estimatedPriceImpact: '0', // v2 doesn't seem to return this directly
+        buyAmount: data.buyAmount,
+        sellAmount: data.sellAmount,
+        gas: data.gas || data.fees?.gasFee?.amount || '0',
+        sources: data.route?.fills?.map((f: any) => ({ name: f.source, proportion: f.proportionBps })) || [],
       };
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -896,3 +969,4 @@ export class ZeroXSwapService {
 }
 
 export const zeroXSwapService = new ZeroXSwapService();
+

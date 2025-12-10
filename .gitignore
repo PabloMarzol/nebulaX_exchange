@@ -39,7 +39,8 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-
+trading_algorithm/.env
+docs/zeroX_docs/zeroX-examples
 node_modules
 backend/node_modules
 apps/web/node_modules
