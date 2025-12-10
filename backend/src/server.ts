@@ -200,6 +200,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Subscribe to AI portfolio signals
+  socket.on('subscribe:ai-signals', (data: { userId: string }) => {
+    socket.join(`ai-signals:${data.userId}`);
+    console.log(`Client ${socket.id} subscribed to AI signals for ${data.userId}`);
+
+    // Send initial acknowledgment
+    socket.emit('ai-signals:subscribed', {
+      message: 'Subscribed to AI signals',
+      timestamp: Date.now()
+    });
+  });
+
+  // Unsubscribe from AI signals
+  socket.on('unsubscribe:ai-signals', (data: { userId: string }) => {
+    socket.leave(`ai-signals:${data.userId}`);
+    console.log(`Client ${socket.id} unsubscribed from AI signals for ${data.userId}`);
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
