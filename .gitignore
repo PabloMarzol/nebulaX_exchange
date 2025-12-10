@@ -63,3 +63,8 @@ yarn-error.log*
 Thumbs.db
 ``
 .cache_ggshield
+backend/python-service/app/__pycache__/
+backend/python-service/app/models/__pycache__/
+backend/python-service/app/routers/__pycache__/
+backend/python-service/app/services/__pycache__/
+backend/python-service/app/utils/__pycache__/
