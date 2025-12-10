@@ -6,6 +6,7 @@ import { HomePage } from './pages/HomePage';
 import { TradingPage } from './pages/TradingPage';
 import { SwapPage } from './pages/SwapPage';
 import { PortfolioPage } from './pages/PortfolioPage';
+import { MarketsPage } from './pages/MarketsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function Router() {
@@ -20,6 +21,7 @@ export function Router() {
         <Route path="/trading/:symbol" component={TradingPage} />
         <Route path="/swap" component={SwapPage} />
         <Route path="/portfolio" component={PortfolioPage} />
+        <Route path="/markets" component={MarketsPage} />
         <Route component={NotFoundPage} />
       </Switch>
     </AppShell>
