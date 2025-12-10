@@ -10,7 +10,7 @@ Python FastAPI microservice for AI-powered crypto portfolio analysis and trading
   - Technical Analyst Agent
   - Risk Manager
 
-- **LLM Meta-Reasoning**: Uses GPT-4/Llama to synthesize agent signals
+- **LLM Meta-Reasoning**: Uses **Groq/Llama** (default) or GPT-4/Claude to synthesize agent signals
 - **Crypto Data Adapter**: Fetches crypto market data from CoinGecko
 - **Portfolio Analytics**: Calculate risk metrics and portfolio health
 - **RESTful API**: FastAPI with automatic OpenAPI documentation
@@ -19,21 +19,27 @@ Python FastAPI microservice for AI-powered crypto portfolio analysis and trading
 
 ### Local Development
 
-1. Install dependencies:
+1. **Configure root .env file** (in project root, not in python-service folder):
 ```bash
-pip install -r requirements.txt
+# Add to ../../.env (root directory)
+GROQ_API_KEY=your_groq_api_key_here
+AI_SERVICE_URL=http://localhost:8000
 ```
 
-2. Set up environment variables:
+2. Install dependencies:
 ```bash
-cp .env.example .env
-# Edit .env with your API keys
+cd backend/python-service
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
 3. Run the service:
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
+
+**Note**: The service automatically loads environment variables from the root `.env` file (two directories up).
 
 4. Access the API docs:
 ```
@@ -49,7 +55,10 @@ docker build -t ai-trading-service .
 
 2. Run the container:
 ```bash
-docker run -p 8000:8000 --env-file .env ai-trading-service
+# Mount root .env file
+docker run -p 8000:8000 \
+  -v $(pwd)/../../.env:/app/.env:ro \
+  ai-trading-service
 ```
 
 ## API Endpoints
@@ -85,8 +94,8 @@ curl -X POST "http://localhost:8000/api/analysis" \
     },
     "start_date": "2024-11-01",
     "end_date": "2024-12-10",
-    "model_name": "gpt-4o",
-    "model_provider": "OpenAI"
+    "model_name": "llama-3.3-70b-versatile",
+    "model_provider": "Groq"
   }'
 ```
 
@@ -95,9 +104,11 @@ curl -X POST "http://localhost:8000/api/analysis" \
 The Node.js backend calls this service via HTTP:
 
 ```typescript
-const response = await axios.post('http://python-service:8000/api/analysis', {
+const response = await axios.post('http://localhost:8000/api/analysis', {
   tickers: ['BTC', 'ETH'],
-  portfolio: userPortfolio
+  portfolio: userPortfolio,
+  model_name: 'llama-3.3-70b-versatile',  // Default
+  model_provider: 'Groq'                   // Default
 });
 ```
 
@@ -109,9 +120,22 @@ const response = await axios.post('http://python-service:8000/api/analysis', {
 
 ## Environment Variables
 
-- `OPENAI_API_KEY` - OpenAI API key for GPT models
-- `GROQ_API_KEY` - Groq API key for Llama models
-- `ANTHROPIC_API_KEY` - Anthropic API key for Claude models
-- `COINGECKO_API_KEY` - CoinGecko API key (optional)
-- `PORT` - Service port (default: 8000)
-- `LOG_LEVEL` - Logging level (default: INFO)
+All environment variables are configured in the **root `.env` file** (not in this directory):
+
+- **`GROQ_API_KEY`** - Groq API key for Llama models (default provider, **required**)
+- `OPENAI_API_KEY` - OpenAI API key for GPT models (optional)
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude models (optional)
+- `COINGECKO_API_KEY` - CoinGecko API key (optional, for higher rate limits)
+- `AI_SERVICE_URL` - Service URL for backend integration (default: http://localhost:8000)
+
+**Get a free Groq API key**: https://console.groq.com/keys
+
+## Default LLM Model
+
+The service uses **Llama 3.3 70B Versatile** via Groq by default. This model:
+- Is extremely fast (Groq's inference is blazing fast)
+- Has a generous free tier
+- Performs well for financial analysis tasks
+- Supports 128K context window
+
+To use a different model, specify `model_name` and `model_provider` in your API requests.

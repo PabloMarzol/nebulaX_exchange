@@ -32,8 +32,8 @@ router.post('/analyze-portfolio', async (req, res) => {
         portfolio,
         start_date: startDate,
         end_date: endDate,
-        model_name: modelName || 'gpt-4o',
-        model_provider: modelProvider || 'OpenAI'
+        model_name: modelName || 'llama-3.3-70b-versatile',
+        model_provider: modelProvider || 'Groq'
       },
       {
         timeout: 120000 // 2 minute timeout for analysis

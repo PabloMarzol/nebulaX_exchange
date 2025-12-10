@@ -7,6 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 import logging
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from root .env file
+root_dir = Path(__file__).parent.parent.parent.parent
+env_path = root_dir / '.env'
+load_dotenv(dotenv_path=env_path)
+logger_temp = logging.getLogger(__name__)
+logger_temp.info(f"Loading environment from: {env_path}")
 
 from app.routers import analysis, signals, portfolio
 from app.utils.logging_config import setup_logging

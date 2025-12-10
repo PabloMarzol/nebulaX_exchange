@@ -76,8 +76,8 @@ export async function analyzePortfolio(
     portfolio,
     startDate: options?.startDate,
     endDate: options?.endDate,
-    modelName: options?.modelName || 'gpt-4o',
-    modelProvider: options?.modelProvider || 'OpenAI'
+    modelName: options?.modelName || 'llama-3.3-70b-versatile',
+    modelProvider: options?.modelProvider || 'Groq'
   });
 
   return response.data;

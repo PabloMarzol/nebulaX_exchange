@@ -60,8 +60,8 @@ class AgentService:
         portfolio: Dict,
         start_date: str = None,
         end_date: str = None,
-        model_name: str = "gpt-4o",
-        model_provider: str = "OpenAI"
+        model_name: str = "llama-3.3-70b-versatile",
+        model_provider: str = "Groq"
     ) -> Dict[str, Any]:
         """
         Run full portfolio analysis with all agents.
@@ -71,8 +71,8 @@ class AgentService:
             portfolio: Current portfolio state
             start_date: Analysis start date
             end_date: Analysis end date
-            model_name: LLM model to use
-            model_provider: LLM provider
+            model_name: LLM model to use (default: llama-3.3-70b-versatile)
+            model_provider: LLM provider (default: Groq)
 
         Returns:
             Dictionary with decisions and portfolio summary

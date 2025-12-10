@@ -10,8 +10,8 @@ class AnalysisRequest(BaseModel):
     portfolio: Dict = Field(..., description="Current portfolio state with positions and cash")
     start_date: Optional[str] = Field(None, description="Start date for analysis (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="End date for analysis (YYYY-MM-DD)")
-    model_name: Optional[str] = Field("gpt-4o", description="LLM model to use")
-    model_provider: Optional[str] = Field("OpenAI", description="LLM provider")
+    model_name: Optional[str] = Field("llama-3.3-70b-versatile", description="LLM model to use")
+    model_provider: Optional[str] = Field("Groq", description="LLM provider")
 
     class Config:
         json_schema_extra = {
@@ -25,8 +25,8 @@ class AnalysisRequest(BaseModel):
                 },
                 "start_date": "2024-11-01",
                 "end_date": "2024-12-10",
-                "model_name": "gpt-4o",
-                "model_provider": "OpenAI"
+                "model_name": "llama-3.3-70b-versatile",
+                "model_provider": "Groq"
             }
         }
 

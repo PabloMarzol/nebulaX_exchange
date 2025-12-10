@@ -155,12 +155,29 @@ A complete Portfolio Analytics Dashboard with AI insights:
 - Node.js >= 20.0.0
 - Python 3.11+
 - pnpm >= 8.0.0
-- API Keys:
-  - OpenAI API key (for GPT-4)
-  - OR Groq API key (for Llama models)
+- API Keys (configured in root `.env` file):
+  - **Groq API key** (default - for Llama models, free tier available)
+  - OR OpenAI API key (for GPT-4)
   - OR Anthropic API key (for Claude models)
 
-### **1. Python AI Service Setup**
+### **1. Configure Root Environment Variables**
+
+All API keys are stored in the **root `.env` file**:
+
+```bash
+# Add to root .env file (if not already present)
+# Add your Groq API key (default provider)
+GROQ_API_KEY=your_groq_api_key_here
+
+# Optional: Add other LLM providers
+OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Backend configuration
+AI_SERVICE_URL=http://localhost:8000
+```
+
+### **2. Python AI Service Setup**
 
 ```bash
 # Navigate to Python service directory
@@ -173,12 +190,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env and add your API keys:
-# - OPENAI_API_KEY
-# - GROQ_API_KEY (optional)
-# - ANTHROPIC_API_KEY (optional)
+# The service automatically loads from root .env file
+# No need to create a separate .env here!
 
 # Run the service
 uvicorn app.main:app --reload --port 8000
@@ -187,14 +200,17 @@ uvicorn app.main:app --reload --port 8000
 The Python service will be available at: `http://localhost:8000`
 API Documentation: `http://localhost:8000/docs`
 
-### **2. Node.js Backend Setup**
+**Note**: The Python service automatically loads environment variables from the root `.env` file (two directories up).
+
+### **3. Node.js Backend Setup**
 
 ```bash
-# Navigate to backend directory
-cd backend
+# The backend already uses the root .env file
+# Just make sure AI_SERVICE_URL is set in root .env:
+# AI_SERVICE_URL=http://localhost:8000
 
-# Add environment variable to .env
-echo "AI_SERVICE_URL=http://localhost:8000" >> .env
+# Navigate to backend directory (if needed)
+cd backend
 
 # Install dependencies (if not already done)
 pnpm install
@@ -205,7 +221,7 @@ pnpm dev
 
 The Node.js backend will be available at: `http://localhost:3000`
 
-### **3. Frontend Setup**
+### **4. Frontend Setup**
 
 ```bash
 # Navigate to web app directory
@@ -220,15 +236,17 @@ pnpm dev
 
 The frontend will be available at: `http://localhost:5173`
 
-### **4. Docker Setup (Optional)**
+### **5. Docker Setup (Optional)**
 
 ```bash
 # Build Python service image
 cd backend/python-service
 docker build -t nebulax-ai-service .
 
-# Run the container
-docker run -p 8000:8000 --env-file .env nebulax-ai-service
+# Run the container (mount root .env)
+docker run -p 8000:8000 \
+  -v $(pwd)/../../.env:/app/.env:ro \
+  nebulax-ai-service
 ```
 
 ---
@@ -356,14 +374,28 @@ agents:
 
 ### **Changing LLM Model**
 
-When calling the analysis endpoint, specify model parameters:
+The default model is **Llama 3.3 70B** via Groq. To use a different model:
 
 ```typescript
 analyzePortfolio(tickers, portfolio, {
-  modelName: 'gpt-4o',           // or 'meta-llama/llama-4-scout-17b-16e-instruct'
-  modelProvider: 'OpenAI'        // or 'Groq', 'Anthropic'
+  modelName: 'llama-3.3-70b-versatile',  // Default (Groq)
+  modelProvider: 'Groq'                   // Default
+
+  // Or use OpenAI:
+  // modelName: 'gpt-4o',
+  // modelProvider: 'OpenAI'
+
+  // Or use Anthropic:
+  // modelName: 'claude-3-5-sonnet-20241022',
+  // modelProvider: 'Anthropic'
 });
 ```
+
+**Available Groq Models**:
+- `llama-3.3-70b-versatile` (default, recommended)
+- `llama-3.1-70b-versatile`
+- `mixtral-8x7b-32768`
+- `gemma2-9b-it`
 
 ### **Adding New Crypto to CoinGecko Mapping**
 
