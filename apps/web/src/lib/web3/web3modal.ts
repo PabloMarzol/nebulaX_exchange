@@ -2,10 +2,13 @@ import { createWeb3Modal } from '@web3modal/wagmi'
 import { wagmiConfig } from './config'
 import { env } from '@/config/env'
 
+// Ensure projectId is valid
+const projectId = env.walletConnectProjectId || '3a8170812b534d0ff9d794f19a901d64'; // Fallback ID for development
+
 // Create Web3Modal instance with onramp support
 export const web3modal = createWeb3Modal({
   wagmiConfig,
-  projectId: env.walletConnectProjectId,
+  projectId,
   enableAnalytics: false,
   enableOnramp: true, // Enable meld.io onramp
   themeMode: 'dark',

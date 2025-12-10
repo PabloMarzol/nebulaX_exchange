@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 import logging
 from functools import lru_cache
 import time
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,8 @@ class CryptoDataAdapter:
         self.use_cache = use_cache
         self.cache = {}
         self.coingecko_base_url = "https://api.coingecko.com/api/v3"
+        self.last_request_time = 0
+        self.min_request_interval = 1.5  # Minimum seconds between requests (CoinGecko free tier limit is ~10-30 req/min)
 
         # Crypto ticker to CoinGecko ID mapping
         self.ticker_to_id = {
@@ -56,6 +59,39 @@ class CryptoDataAdapter:
             return self.ticker_to_id[ticker_upper]
         # Default to lowercase ticker if not in mapping
         return ticker.lower()
+
+    def _rate_limit(self):
+        """Enforce rate limiting for CoinGecko API."""
+        current_time = time.time()
+        elapsed = current_time - self.last_request_time
+        if elapsed < self.min_request_interval:
+            time.sleep(self.min_request_interval - elapsed)
+        self.last_request_time = time.time()
+
+    def _make_request(self, url: str, params: Dict[str, Any] = None, max_retries: int = 3) -> Dict[str, Any]:
+        """Make a request with rate limiting and retries."""
+        for attempt in range(max_retries):
+            try:
+                self._rate_limit()
+                response = requests.get(url, params=params, timeout=10)
+                
+                if response.status_code == 429:
+                    wait_time = (attempt + 1) * 5  # Exponential backoff
+                    logger.warning(f"Rate limited by CoinGecko. Waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                    time.sleep(wait_time)
+                    continue
+                    
+                response.raise_for_status()
+                return response.json()
+                
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Request failed after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Request failed (attempt {attempt + 1}/{max_retries}): {e}")
+                time.sleep(2)
+        
+        raise Exception("Max retries exceeded")
 
     def get_prices(self, ticker: str, start_date: Optional[str], end_date: str) -> pl.DataFrame:
         """
@@ -93,9 +129,7 @@ class CryptoDataAdapter:
 
             logger.info(f"Fetching price data for {ticker} ({coin_id}) from {start_date} to {end_date}")
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            data = self._make_request(url, params=params)
 
             # Extract prices and volumes
             prices = data.get("prices", [])
@@ -147,9 +181,7 @@ class CryptoDataAdapter:
             url = f"{self.coingecko_base_url}/coins/{coin_id}"
             params = {"localization": "false", "tickers": "false", "community_data": "true", "developer_data": "true"}
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            data = self._make_request(url, params=params)
 
             market_data = data.get("market_data", {})
 
@@ -178,22 +210,25 @@ class CryptoDataAdapter:
 
                     # Crypto-specific metrics (adapted to stock equivalents)
                     # NVT Ratio = Market Cap / Daily Volume (similar to P/E ratio)
-                    if self.total_volume > 0:
+                    if self.total_volume and self.total_volume > 0:
                         self.nvt_ratio = self.market_cap / (self.total_volume * 365)
                     else:
-                        self.nvt_ratio = None
+                        self.nvt_ratio = 0.0
 
                     # Market cap to realized cap ratio (similar to P/B ratio)
                     self.market_cap_rank = data.get("market_cap_rank", 0)
 
                     # Liquidity score (similar to free cash flow)
-                    self.liquidity_score = market_data.get("total_volume", {}).get("usd", 0) / max(self.market_cap, 1)
+                    # Avoid division by zero
+                    market_cap_safe = max(self.market_cap, 1) if self.market_cap else 1
+                    total_vol = market_data.get("total_volume", {}).get("usd", 0) or 0
+                    self.liquidity_score = total_vol / market_cap_safe
 
                     # Supply metrics (similar to shares outstanding)
-                    if self.total_supply and self.circulating_supply:
+                    if self.total_supply and self.circulating_supply and self.total_supply > 0:
                         self.supply_ratio = self.circulating_supply / self.total_supply
                     else:
-                        self.supply_ratio = None
+                        self.supply_ratio = 0.0
 
                     # Adapted ROE equivalent (30-day return)
                     self.return_on_equity = self.price_change_30d / 100 if self.price_change_30d else 0
@@ -217,9 +252,7 @@ class CryptoDataAdapter:
 
             # Get market data
             url = f"{self.coingecko_base_url}/coins/{coin_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            data = self._make_request(url)
 
             market_data = data.get("market_data", {})
 
@@ -240,8 +273,10 @@ class CryptoDataAdapter:
                     self.free_cash_flow = volume if volume else None
 
                     # Operating margin: Liquidity ratio
-                    mc = market_data.get("market_cap", {}).get("usd", 1)
-                    self.operating_margin = volume / mc if mc > 0 else None
+                    mc = market_data.get("market_cap", {}).get("usd", 0)
+                    # Avoid division by zero
+                    mc_safe = mc if mc and mc > 0 else 1
+                    self.operating_margin = volume / mc_safe if volume else 0.0
 
                     # Gross margin: Similar to operating margin for crypto
                     self.gross_margin = self.operating_margin
@@ -282,9 +317,7 @@ class CryptoDataAdapter:
             coin_id = self._get_coingecko_id(ticker)
 
             url = f"{self.coingecko_base_url}/coins/{coin_id}"
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            data = self._make_request(url)
 
             market_cap = data.get("market_data", {}).get("market_cap", {}).get("usd", 0)
             logger.info(f"Market cap for {ticker}: ${market_cap:,.0f}")
@@ -324,9 +357,7 @@ class CryptoDataAdapter:
                 "vs_currencies": "usd"
             }
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            data = self._make_request(url, params=params)
 
             price = data.get(coin_id, {}).get("usd", 0.0)
             logger.info(f"Current price for {ticker}: ${price:,.2f}")
@@ -348,9 +379,7 @@ class CryptoDataAdapter:
                 "vs_currencies": "usd"
             }
 
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            data = self._make_request(url, params=params)
 
             # Map back to ticker symbols
             result = {}

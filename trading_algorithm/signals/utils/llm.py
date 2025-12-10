@@ -9,7 +9,8 @@ import os
 # Import necessary libraries
 import openai
 import anthropic
-from langchain_groq import ChatGroq
+import httpx
+from groq import AsyncGroq
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -173,36 +174,65 @@ async def call_llm(
     return _create_default_response(pydantic_model)
 
 async def _call_groq(messages, model_name):
-    """Call Groq API."""
-    try:
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("GROQ_API_KEY not found in environment variables")
-        
-        # ChatGroq in LangChain has a different interface than we expected
-        client = ChatGroq(
-            api_key=api_key,
-            model=model_name or "llama-3.3-70b-versatile"
-        )
-        
-        # Convert the messages to the expected format
-        formatted_messages = []
-        for msg in messages:
-            formatted_messages.append({"role": msg["role"], "content": msg["content"]})
-        
-        # Use ainvoke method for async call
-        response = await client.ainvoke(formatted_messages)
-        
-        # Parse content from response based on LangChain's format
-        content = response.content
-        
-        # Return the raw content for parsing in the main function
-        # This allows the main parsing logic to handle JSON extraction
-        return content
+    """Call Groq API with fallback."""
+    
+    # Define models
+    primary_model = model_name or "moonshotai/kimi-k2-instruct-0905"
+    fallback_model = "qwen/qwen3-32b"
+    
+    async def try_model(model):
+        try:
+            api_key = os.getenv("GROQ_API_KEY")
+            if not api_key:
+                raise ValueError("GROQ_API_KEY not found in environment variables")
             
+            # Create a custom httpx client without proxies to avoid environment variable interference
+            # This fixes the "unexpected keyword argument 'proxies'" error
+            http_client = httpx.AsyncClient(proxies=None)
+            
+            # Use official Groq client with custom http client
+            client = AsyncGroq(
+                api_key=api_key,
+                http_client=http_client
+            )
+            
+            # Convert the messages to the expected format
+            formatted_messages = []
+            for msg in messages:
+                formatted_messages.append({"role": msg["role"], "content": msg["content"]})
+            
+            # Call Groq API
+            completion = await client.chat.completions.create(
+                model=model,
+                messages=formatted_messages,
+                temperature=0.1,
+                max_tokens=4096,
+                top_p=1,
+                stream=False,
+                stop=None,
+            )
+            
+            # Extract content
+            content = completion.choices[0].message.content
+            
+            # Close the client explicitly
+            await client.close()
+            
+            return content
+            
+        except Exception as e:
+            print(f"Groq API error with model {model}: {e}")
+            raise
+
+    try:
+        return await try_model(primary_model)
     except Exception as e:
-        print(f"Groq API error: {e}")
-        raise
+        print(f"Primary model {primary_model} failed, trying fallback {fallback_model}")
+        try:
+            return await try_model(fallback_model)
+        except Exception as fallback_error:
+            print(f"Fallback model {fallback_model} also failed: {fallback_error}")
+            raise e  # Raise the original error if fallback also fails
 
 async def _call_openai(messages, model_name):
     """Call OpenAI API."""

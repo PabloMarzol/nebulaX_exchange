@@ -18,7 +18,7 @@ const envSchema = z.object({
   ONRAMP_APP_LIVE_SECRET_KEY: z.string().optional(),
   ONRAMP_API_LIVE_KEY: z.string().optional(),
   ONRAMP_BASE_URL: z.string().default('https://onramp.money'),
-  GROK_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
   COINGECKO_API_KEY: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),

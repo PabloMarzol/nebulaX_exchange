@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { usePortfolioAnalysisMutation } from '@/hooks/portfolio/usePortfolioAnalysis';
 import { usePortfolioMetrics } from '@/hooks/portfolio/usePortfolioMetrics';
@@ -70,7 +70,7 @@ type TimeFrame = '1D' | '1W' | '1M' | '3M' | '1Y' | 'All';
 type TabType = 'overview' | 'analytics' | 'transactions' | 'market' | 'watchlist';
 
 export function PortfolioPage() {
-  const navigate = useNavigate();
+  const [, setLocation] = useLocation();
   const [portfolio] = useState<Portfolio>(MOCK_PORTFOLIO);
   const [tickers] = useState<string[]>(MOCK_TICKERS);
   const [analysisData, setAnalysisData] = useState<any>(null);
@@ -350,21 +350,21 @@ export function PortfolioPage() {
                             {/* Quick Actions */}
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
-                                onClick={() => navigate('/trading')}
+                                onClick={() => setLocation('/trading')}
                                 className="p-1 hover:bg-emerald-500/10 rounded text-emerald-400"
                                 title="Buy more"
                               >
                                 <ShoppingCart className="h-3 w-3" />
                               </button>
                               <button
-                                onClick={() => navigate('/trading')}
+                                onClick={() => setLocation('/trading')}
                                 className="p-1 hover:bg-red-500/10 rounded text-red-400"
                                 title="Sell"
                               >
                                 <ArrowUpRight className="h-3 w-3" />
                               </button>
                               <button
-                                onClick={() => navigate('/swap')}
+                                onClick={() => setLocation('/swap')}
                                 className="p-1 hover:bg-blue-500/10 rounded text-blue-400"
                                 title="Swap"
                               >

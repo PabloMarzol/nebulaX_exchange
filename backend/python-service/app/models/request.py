@@ -10,11 +10,12 @@ class AnalysisRequest(BaseModel):
     portfolio: Dict = Field(..., description="Current portfolio state with positions and cash")
     start_date: Optional[str] = Field(None, description="Start date for analysis (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="End date for analysis (YYYY-MM-DD)")
-    model_name: Optional[str] = Field("llama-3.3-70b-versatile", description="LLM model to use")
+    model_name: Optional[str] = Field("moonshotai/kimi-k2-instruct-0905", description="LLM model to use")
     model_provider: Optional[str] = Field("Groq", description="LLM provider")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "protected_namespaces": (),
+        "json_schema_extra": {
             "example": {
                 "tickers": ["BTC", "ETH", "SOL"],
                 "portfolio": {
@@ -25,10 +26,11 @@ class AnalysisRequest(BaseModel):
                 },
                 "start_date": "2024-11-01",
                 "end_date": "2024-12-10",
-                "model_name": "llama-3.3-70b-versatile",
+                "model_name": "moonshotai/kimi-k2-instruct-0905",
                 "model_provider": "Groq"
             }
         }
+    }
 
 
 class SignalRequest(BaseModel):
@@ -38,8 +40,8 @@ class SignalRequest(BaseModel):
     start_date: Optional[str] = Field(None, description="Start date for analysis")
     end_date: Optional[str] = Field(None, description="End date for analysis")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "ticker": "BTC",
                 "agent": "bill_ackman",
@@ -47,6 +49,7 @@ class SignalRequest(BaseModel):
                 "end_date": "2024-12-10"
             }
         }
+    }
 
 
 class PortfolioMetricsRequest(BaseModel):
@@ -54,8 +57,8 @@ class PortfolioMetricsRequest(BaseModel):
     portfolio: Dict = Field(..., description="Portfolio state")
     tickers: List[str] = Field(..., description="List of tickers in portfolio")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "portfolio": {
                     "cash": 10000.0,
@@ -66,6 +69,7 @@ class PortfolioMetricsRequest(BaseModel):
                 "tickers": ["BTC"]
             }
         }
+    }
 
 
 class BatchSignalRequest(BaseModel):
@@ -74,11 +78,12 @@ class BatchSignalRequest(BaseModel):
     start_date: Optional[str] = Field(None, description="Start date for analysis")
     end_date: Optional[str] = Field(None, description="End date for analysis")
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "tickers": ["BTC", "ETH", "SOL"],
                 "start_date": "2024-11-01",
                 "end_date": "2024-12-10"
             }
         }
+    }
