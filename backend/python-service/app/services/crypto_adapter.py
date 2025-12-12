@@ -24,9 +24,20 @@ class CryptoDataAdapter:
         """Initialize the crypto data adapter."""
         self.use_cache = use_cache
         self.cache = {}
+        self.cache_ttl = {}  # Store cache expiration times
         self.coingecko_base_url = "https://api.coingecko.com/api/v3"
         self.last_request_time = 0
         self.min_request_interval = 1.5  # Minimum seconds between requests (CoinGecko free tier limit is ~10-30 req/min)
+
+        # Cache TTL settings (in seconds)
+        self.cache_durations = {
+            "prices": 3600,  # 1 hour for historical prices
+            "current_price": 60,  # 1 minute for current prices
+            "batch_prices": 60,  # 1 minute for batch prices
+            "financial_metrics": 300,  # 5 minutes for financial metrics
+            "line_items": 300,  # 5 minutes for line items
+            "market_cap": 300,  # 5 minutes for market cap
+        }
 
         # Crypto ticker to CoinGecko ID mapping
         self.ticker_to_id = {
@@ -59,6 +70,36 @@ class CryptoDataAdapter:
             return self.ticker_to_id[ticker_upper]
         # Default to lowercase ticker if not in mapping
         return ticker.lower()
+
+    def _get_cache_key(self, cache_type: str, *args) -> str:
+        """Generate a unique cache key."""
+        return f"{cache_type}::{':'.join(str(arg) for arg in args)}"
+
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cache entry is still valid."""
+        if not self.use_cache:
+            return False
+        if cache_key not in self.cache:
+            return False
+        if cache_key not in self.cache_ttl:
+            return False
+        return time.time() < self.cache_ttl[cache_key]
+
+    def _set_cache(self, cache_key: str, data: Any, cache_type: str):
+        """Set cache entry with TTL."""
+        if not self.use_cache:
+            return
+        self.cache[cache_key] = data
+        ttl_seconds = self.cache_durations.get(cache_type, 300)
+        self.cache_ttl[cache_key] = time.time() + ttl_seconds
+        logger.debug(f"Cached {cache_key} for {ttl_seconds}s")
+
+    def _get_cache(self, cache_key: str) -> Optional[Any]:
+        """Get cache entry if valid."""
+        if self._is_cache_valid(cache_key):
+            logger.debug(f"Cache hit: {cache_key}")
+            return self.cache[cache_key]
+        return None
 
     def _rate_limit(self):
         """Enforce rate limiting for CoinGecko API."""
@@ -105,6 +146,12 @@ class CryptoDataAdapter:
         Returns:
             Polars DataFrame with columns: timestamp, open, high, low, close, volume
         """
+        # Check cache first
+        cache_key = self._get_cache_key("prices", ticker, start_date, end_date)
+        cached_data = self._get_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             coin_id = self._get_coingecko_id(ticker)
 
@@ -160,6 +207,9 @@ class CryptoDataAdapter:
             df = pl.DataFrame(price_data)
             logger.info(f"Fetched {len(df)} price points for {ticker}")
 
+            # Cache the result
+            self._set_cache(cache_key, df, "prices")
+
             return df
 
         except Exception as e:
@@ -174,6 +224,12 @@ class CryptoDataAdapter:
         Returns:
             List of metric objects with crypto-specific attributes
         """
+        # Check cache first
+        cache_key = self._get_cache_key("financial_metrics", ticker, end_date)
+        cached_data = self._get_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             coin_id = self._get_coingecko_id(ticker)
 
@@ -236,7 +292,11 @@ class CryptoDataAdapter:
             metrics = CryptoMetrics(data)
             logger.info(f"Fetched financial metrics for {ticker}: Market Cap ${metrics.market_cap:,.0f}")
 
-            return [metrics]
+            # Cache the result
+            result = [metrics]
+            self._set_cache(cache_key, result, "financial_metrics")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching financial metrics for {ticker}: {e}")
@@ -247,6 +307,12 @@ class CryptoDataAdapter:
         Get financial line items for a crypto asset.
         Adapts traditional line items to crypto equivalents.
         """
+        # Check cache first
+        cache_key = self._get_cache_key("line_items", ticker, end_date)
+        cached_data = self._get_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             coin_id = self._get_coingecko_id(ticker)
 
@@ -305,7 +371,12 @@ class CryptoDataAdapter:
                     self.dividends_and_other_cash_distributions = None
 
             line_items_obj = CryptoLineItems(market_data)
-            return [line_items_obj]
+
+            # Cache the result
+            result = [line_items_obj]
+            self._set_cache(cache_key, result, "line_items")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching line items for {ticker}: {e}")
@@ -313,6 +384,12 @@ class CryptoDataAdapter:
 
     def get_market_cap(self, ticker: str, end_date: str) -> float:
         """Get current market cap for a crypto asset."""
+        # Check cache first
+        cache_key = self._get_cache_key("market_cap", ticker, end_date)
+        cached_data = self._get_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             coin_id = self._get_coingecko_id(ticker)
 
@@ -321,6 +398,9 @@ class CryptoDataAdapter:
 
             market_cap = data.get("market_data", {}).get("market_cap", {}).get("usd", 0)
             logger.info(f"Market cap for {ticker}: ${market_cap:,.0f}")
+
+            # Cache the result
+            self._set_cache(cache_key, market_cap, "market_cap")
 
             return market_cap
 
@@ -348,6 +428,12 @@ class CryptoDataAdapter:
 
     def get_current_price(self, ticker: str) -> float:
         """Get current price for a crypto asset."""
+        # Check cache first
+        cache_key = self._get_cache_key("current_price", ticker)
+        cached_data = self._get_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             coin_id = self._get_coingecko_id(ticker)
 
@@ -362,6 +448,9 @@ class CryptoDataAdapter:
             price = data.get(coin_id, {}).get("usd", 0.0)
             logger.info(f"Current price for {ticker}: ${price:,.2f}")
 
+            # Cache the result
+            self._set_cache(cache_key, price, "current_price")
+
             return price
 
         except Exception as e:
@@ -370,6 +459,12 @@ class CryptoDataAdapter:
 
     def get_batch_prices(self, tickers: List[str]) -> Dict[str, float]:
         """Get current prices for multiple tickers in one call."""
+        # Check cache first
+        cache_key = self._get_cache_key("batch_prices", ",".join(sorted(tickers)))
+        cached_data = self._get_cache(cache_key)
+        if cached_data is not None:
+            return cached_data
+
         try:
             coin_ids = [self._get_coingecko_id(ticker) for ticker in tickers]
 
@@ -388,6 +483,10 @@ class CryptoDataAdapter:
                 result[ticker] = data.get(coin_id, {}).get("usd", 0.0)
 
             logger.info(f"Fetched batch prices for {len(tickers)} tickers")
+
+            # Cache the result
+            self._set_cache(cache_key, result, "batch_prices")
+
             return result
 
         except Exception as e:

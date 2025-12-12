@@ -186,9 +186,9 @@ async def _call_groq(messages, model_name):
             if not api_key:
                 raise ValueError("GROQ_API_KEY not found in environment variables")
             
-            # Create a custom httpx client without proxies to avoid environment variable interference
-            # This fixes the "unexpected keyword argument 'proxies'" error
-            http_client = httpx.AsyncClient(proxies=None)
+            # Create a custom httpx client to avoid environment variable interference
+            # Don't specify proxies parameter as it's not supported by httpx.AsyncClient
+            http_client = httpx.AsyncClient()
             
             # Use official Groq client with custom http client
             client = AsyncGroq(
