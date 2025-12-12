@@ -2,9 +2,10 @@
  * Create Pie Component
  * Allows users to search for coins and create custom investment portfolios (pies)
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Search, Plus, X, PieChart, TrendingUp, Percent, Save, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSymbols, usePrices, useMarketStats } from '@/hooks/useMarketData';
 
 interface Coin {
   id: string;
@@ -30,22 +31,6 @@ interface InvestmentPie {
   createdAt: Date;
 }
 
-// Mock coin data
-const MOCK_COINS: Coin[] = [
-  { id: '1', symbol: 'BTC', name: 'Bitcoin', price: 95000, change24h: 3.2, marketCap: 1800000000000 },
-  { id: '2', symbol: 'ETH', name: 'Ethereum', price: 3500, change24h: 2.8, marketCap: 420000000000 },
-  { id: '3', symbol: 'SOL', name: 'Solana', price: 145, change24h: 5.6, marketCap: 65000000000 },
-  { id: '4', symbol: 'ADA', name: 'Cardano', price: 0.65, change24h: -1.2, marketCap: 23000000000 },
-  { id: '5', symbol: 'DOT', name: 'Polkadot', price: 8.5, change24h: 1.8, marketCap: 11000000000 },
-  { id: '6', symbol: 'AVAX', name: 'Avalanche', price: 42, change24h: 4.2, marketCap: 16000000000 },
-  { id: '7', symbol: 'MATIC', name: 'Polygon', price: 1.2, change24h: -0.5, marketCap: 11000000000 },
-  { id: '8', symbol: 'LINK', name: 'Chainlink', price: 18, change24h: 2.1, marketCap: 10000000000 },
-  { id: '9', symbol: 'UNI', name: 'Uniswap', price: 12, change24h: 3.5, marketCap: 9000000000 },
-  { id: '10', symbol: 'ATOM', name: 'Cosmos', price: 11, change24h: 1.9, marketCap: 4000000000 },
-  { id: '11', symbol: 'XRP', name: 'Ripple', price: 0.58, change24h: 0.8, marketCap: 31000000000 },
-  { id: '12', symbol: 'LTC', name: 'Litecoin', price: 95, change24h: -0.3, marketCap: 7000000000 }
-];
-
 export function CreatePie() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAssets, setSelectedAssets] = useState<PieAsset[]>([]);
@@ -54,8 +39,26 @@ export function CreatePie() {
   const [savedPies, setSavedPies] = useState<InvestmentPie[]>([]);
   const [editingPieId, setEditingPieId] = useState<string | null>(null);
 
+  // Fetch real market data
+  const { data: symbolsData, isLoading: symbolsLoading } = useSymbols();
+  const { data: pricesData, isLoading: pricesLoading } = usePrices();
+
+  // Transform API data into Coin format
+  const availableCoins = useMemo<Coin[]>(() => {
+    if (!symbolsData?.symbols || !pricesData) return [];
+
+    return symbolsData.symbols.map((symbol, index) => ({
+      id: symbol.symbol,
+      symbol: symbol.symbol,
+      name: symbol.symbol, // API doesn't provide full name, using symbol
+      price: parseFloat(pricesData[symbol.symbol] || '0'),
+      change24h: 0, // Would need 24h stats API call per symbol
+      marketCap: 0, // Not available from current API
+    }));
+  }, [symbolsData, pricesData]);
+
   // Filter coins based on search
-  const filteredCoins = MOCK_COINS.filter(
+  const filteredCoins = availableCoins.filter(
     coin =>
       coin.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
       coin.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -195,8 +198,22 @@ export function CreatePie() {
             />
           </div>
 
+          {/* Loading State */}
+          {(symbolsLoading || pricesLoading) && searchQuery && (
+            <div className="mt-2 p-4 bg-zinc-900 border border-zinc-800 rounded-lg text-center">
+              <p className="text-sm text-zinc-400">Loading assets...</p>
+            </div>
+          )}
+
+          {/* No Results */}
+          {searchQuery && !symbolsLoading && !pricesLoading && filteredCoins.length === 0 && (
+            <div className="mt-2 p-4 bg-zinc-900 border border-zinc-800 rounded-lg text-center">
+              <p className="text-sm text-zinc-400">No assets found matching "{searchQuery}"</p>
+            </div>
+          )}
+
           {/* Search Results */}
-          {searchQuery && filteredCoins.length > 0 && (
+          {searchQuery && !symbolsLoading && !pricesLoading && filteredCoins.length > 0 && (
             <div className="mt-2 max-h-48 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-lg">
               {filteredCoins.map((coin) => (
                 <button
